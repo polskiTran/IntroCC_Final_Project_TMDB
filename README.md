@@ -26,6 +26,13 @@ The ingestion pipeline has three stages, all idempotent:
 | Gold   | modeling-ready `gold_movies.parquet`                         | `uv run python -m src.ingest gold`        |
 | All    | Bronze then Silver then Gold                                 | `uv run python -m src.ingest all`         |
 
+The ML module has its own entry point (runs after Gold is built):
+
+| Step  | Output                                  | Command                             |
+| ----- | --------------------------------------- | ----------------------------------- |
+| Train | `data/ml/model_{revenue,rating}.joblib` | `uv run python -m src.ml train`     |
+| Probe | stdout revenue + rating prediction      | `uv run python -m src.ml predict …` |
+
 Tunables are centralized in [src/config.py](src/config.py) and overridable via `.env` or process env. Common knobs:
 
 - `SAMPLE_COUNTS` (default `1000`) — hard cap on number of movies to pull.
@@ -53,6 +60,10 @@ data/
     crew.parquet                            # long, filtered to Director and Producer
   gold/
     gold_movies.parquet                     # wide, budget>=100k and revenue>0, month grain
+  ml/
+    model_revenue.joblib                    # HGB pipeline + fit-time feature spec
+    model_rating.joblib                     # HGB pipeline + fit-time feature spec
+    metrics.json                            # holdout, 5-fold CV, Ridge baseline, importances
 ```
 
 The Gold table is the modeling-ready dataset for the Streamlit analytics and ML pages. It joins lead director and lead cast onto the Silver movies and adds `budget_musd`, `revenue_musd`, `roi`, and `lead_production_company`.
@@ -69,7 +80,7 @@ uv run streamlit run src/app/Home.py
 1. [x] **Overview** (`src/app/Home.py`) — abstract, pipeline diagram, scope constraints, and per-layer data metadata (file count, size, row count, last updated) plus headline Gold stats.
 2. [x] **Sample data pull / inspect** (`src/app/pages/1_Sample_Data.py`) — filter the Gold table by year, genres, director, and budget; preview rows with selectable columns, summary statistics, and CSV download.
 3. [x] **Data analytics** (`src/app/pages/2_Analytics.py`) — genre ROI, director leaderboard, hit/flop scatter, plus a release-month × genre seasonality heatmap and a top-production-companies leaderboard. All charts share sidebar filters (year range, minimum `vote_count`, genres).
-4. [ ] ML prediction — planned.
+4. [x] **ML prediction** (`src/app/pages/3_ML_Prediction.py`) — two `HistGradientBoostingRegressor` models (revenue & rating) with leakage-safe target encoding. Findings tab shows hold-out / 5-fold CV metrics vs a Ridge baseline, permutation importances, and predicted-vs-actual scatter. Predict tab runs single-row inference from user inputs.
 
 ### Analytics page
 - Average ROI for each genre (bar chart)
@@ -80,17 +91,38 @@ uv run streamlit run src/app/Home.py
 
 ### ML prediction page
 
-Input features:
-- genres (one-hot encoding)
-- budget (million dollars)
-- release month (1–12)
-- director (target encoding)
-- production (target encoding)
-- 1 lead cast (target encoding)
+**Model.** `sklearn.ensemble.HistGradientBoostingRegressor` wrapped in a `Pipeline`
+with a `ColumnTransformer`. Gradient-boosted trees are a strong default for small
+tabular data with a mix of numeric, cyclical, multi-hot, and high-cardinality
+categorical features. The same architecture is used for both targets, so the
+only difference between the two models is the target transform and sample
+weighting.
 
-Targets (2 models):
-- Model A: Revenue (million dollars)
-- Model B: User rating
+**Features.**
+- `budget_musd`, `runtime` — numeric passthrough.
+- `release_month` — cyclical: `sin(2πm/12)`, `cos(2πm/12)`.
+- `genres` — multi-hot over the top-15 most frequent genres seen at fit time.
+- `director_name`, `lead_production_company`, `lead_cast_name` — leakage-safe
+  `sklearn.preprocessing.TargetEncoder` (5-fold out-of-fold encoding, auto
+  smoothing). Unseen categories at inference time fall back to the learned
+  global prior.
+
+**Targets (2 models).**
+- Model A — revenue: trained on `log1p(revenue_musd)`; predictions are
+  back-transformed with `expm1` and reported in million USD.
+- Model B — rating: trained on `vote_average` (0–10) with row weights
+  `log1p(vote_count)` so highly-rated obscure titles don't dominate. Predictions
+  are clipped to `[0, 10]`.
+
+**Evaluation.** 80/20 hold-out split plus 5-fold CV (R², MAE, RMSE). A Ridge
+regression with the same feature pipeline is reported as a sanity baseline.
+Permutation importances (scoring = R²) are computed on the hold-out split.
+
+**Artifacts.** Each bundle (`data/ml/model_*.joblib`) carries the fitted
+pipeline, the feature spec (top genres), all reported metrics, permutation
+importances, and the hold-out predictions used by the Streamlit scatter plot
+so the app never has to retrain. A combined `metrics.json` is written alongside
+for easy inspection.
 
 ## Tests & checks
 

@@ -39,6 +39,7 @@ class Settings(BaseSettings):
     bronze_dir: Path = _PROJECT_ROOT / "data" / "bronze"
     silver_dir: Path = _PROJECT_ROOT / "data" / "silver"
     gold_dir: Path = _PROJECT_ROOT / "data" / "gold"
+    ml_dir: Path = _PROJECT_ROOT / "data" / "ml"
 
     @property
     def discover_dir(self) -> Path:
