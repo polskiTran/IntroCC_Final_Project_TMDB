@@ -14,6 +14,7 @@ This file is the authoritative guide for any coding agent (Claude, Cursor, Codex
 3. **Everything runs in Docker.** Any command in the README must also work as `docker compose run …`.
 4. **Idempotency.** Any data-pipeline stage must be safe to re-run without corrupting downstream state.
 5. **Secrets via `.env`** (never commit).
+6. Simplicity is king, this is a small personal project not a commercial or enterprise grade application
 
 ## Lint / type / test
 
