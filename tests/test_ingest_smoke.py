@@ -16,7 +16,7 @@ import polars as pl
 import pytest
 
 from src.config import Settings
-from src.ingest import silver
+from src.ingest import gold, silver
 from src.ingest.tmdb_client import TMDBClient, TMDBError
 
 
@@ -70,9 +70,11 @@ def tmp_settings(tmp_path: Path) -> Settings:
         tmdb_bearer_token=None,
         bronze_dir=tmp_path / "bronze",
         silver_dir=tmp_path / "silver",
+        gold_dir=tmp_path / "gold",
         sample_counts=10,
         min_vote_count=10,
         start_year=1980,
+        min_budget_usd=100_000,
     )
 
 
@@ -87,7 +89,7 @@ def test_silver_build_produces_parquet(tmp_settings: Settings) -> None:
     counts = silver.build(tmp_settings)
 
     assert counts["movies"] == 2
-    assert counts["cast"] == 4
+    assert counts["cast"] == 2 * silver.CAST_TOP_N
     assert counts["crew"] == 4
 
     movies_df = pl.read_parquet(tmp_settings.silver_dir / "movies.parquet")
@@ -135,3 +137,58 @@ def test_tmdb_client_requires_credentials() -> None:
     settings = Settings(tmdb_api_key="", tmdb_bearer_token=None)
     with pytest.raises(TMDBError):
         TMDBClient(settings)
+
+
+def test_gold_applies_scope_filters(tmp_settings: Settings) -> None:
+    movies_bronze = tmp_settings.movies_bronze_dir
+    low_budget = _movie_fixture(10)
+    low_budget["budget"] = 50_000
+    no_revenue = _movie_fixture(11)
+    no_revenue["revenue"] = 0
+    keeper = _movie_fixture(12)
+    keeper["budget"] = 1_000_000
+    keeper["revenue"] = 5_000_000
+    _write_bronze_movie(movies_bronze, low_budget)
+    _write_bronze_movie(movies_bronze, no_revenue)
+    _write_bronze_movie(movies_bronze, keeper)
+    silver.build(tmp_settings)
+
+    counts = gold.build(tmp_settings)
+    assert counts["gold_movies"] == 1
+    assert counts["dropped"] == 2
+
+    df = pl.read_parquet(tmp_settings.gold_dir / "gold_movies.parquet")
+    assert df.height == 1
+    row = df.row(0, named=True)
+    assert row["movie_id"] == 12
+    assert row["budget_musd"] == pytest.approx(1.0)
+    assert row["revenue_musd"] == pytest.approx(5.0)
+    assert row["roi"] == pytest.approx(4.0)
+    assert "release_date" not in df.columns
+
+
+def test_gold_joins_director_and_lead_cast(tmp_settings: Settings) -> None:
+    doc = _movie_fixture(20)
+    doc["credits"] = {
+        "cast": [
+            {"order": 1, "id": 901, "name": "Second Billed", "character": "Side"},
+            {"order": 0, "id": 900, "name": "Top Billed", "character": "Lead"},
+        ],
+        "crew": [
+            {"job": "Producer", "id": 801, "name": "A Producer"},
+            {"job": "Director", "id": 800, "name": "Jane Director"},
+        ],
+    }
+    _write_bronze_movie(tmp_settings.movies_bronze_dir, doc)
+    silver.build(tmp_settings)
+
+    gold.build(tmp_settings)
+
+    df = pl.read_parquet(tmp_settings.gold_dir / "gold_movies.parquet")
+    assert df.height == 1
+    row = df.row(0, named=True)
+    assert row["director_name"] == "Jane Director"
+    assert row["director_id"] == 800
+    assert row["lead_cast_name"] == "Top Billed"
+    assert row["lead_cast_id"] == 900
+    assert row["lead_production_company"] == "Acme Studios"

@@ -34,9 +34,11 @@ class Settings(BaseSettings):
     sample_counts: int = 1000
     min_vote_count: int = 10
     start_year: int = 1980
+    min_budget_usd: int = 100_000
 
     bronze_dir: Path = _PROJECT_ROOT / "data" / "bronze"
     silver_dir: Path = _PROJECT_ROOT / "data" / "silver"
+    gold_dir: Path = _PROJECT_ROOT / "data" / "gold"
 
     @property
     def discover_dir(self) -> Path:
