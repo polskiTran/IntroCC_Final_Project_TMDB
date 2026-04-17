@@ -31,7 +31,7 @@ class Settings(BaseSettings):
     requests_per_second: int = 40
     concurrency: int = 20
 
-    sample_counts: int = 1000
+    sample_counts: int = 10000
     min_vote_count: int = 10
     start_year: int = 1980
     min_budget_usd: int = 100_000
