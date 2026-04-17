@@ -65,13 +65,11 @@ Launch the app (pages defined under `src/app/`):
 uv run streamlit run src/app/Home.py
 ```
 
-Note: the Streamlit pages are not yet implemented; this is the intended entry point once pages are added.
-
-### Planned pages
-1. Overview — project abstract + data metadata
-2. Sample data pull / inspect
-3. Data analytics
-4. ML prediction
+### Pages
+1. [x] **Overview** (`src/app/Home.py`) — abstract, pipeline diagram, scope constraints, and per-layer data metadata (file count, size, row count, last updated) plus headline Gold stats.
+2. [x] **Sample data pull / inspect** (`src/app/pages/1_Sample_Data.py`) — filter the Gold table by year, genres, director, and budget; preview rows with selectable columns, summary statistics, and CSV download.
+3. [ ] Data analytics — planned.
+4. [ ] ML prediction — planned.
 
 ### Analytics page
 - Average ROI for each genre (bar chart)

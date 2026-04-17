@@ -52,3 +52,8 @@ Conventional commits: `feat:`, `fix:`, `chore:`, `docs:`, `refactor:`, `test:`.
 - Don't persist TMDB API keys in code or commit `.env`.
 - Don't ship commented-out code or print-debugging into main.
 - Don't hit TMDB faster than ~40 req/s.
+
+## streamlit
+
+warning: `use_container_width` will be removed after 2025-12-31.
+For `use_container_width=True`, use `width='stretch'`. For `use_container_width=False`, use `width='content'`.
