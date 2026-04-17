@@ -15,6 +15,7 @@ This file is the authoritative guide for any coding agent (Claude, Cursor, Codex
 4. **Idempotency.** Any data-pipeline stage must be safe to re-run without corrupting downstream state.
 5. **Secrets via `.env`** (never commit).
 6. Simplicity is king, this is a small personal project not a commercial or enterprise grade application
+7. Centralize setting with pydantic setting in a config.py - no scatter app config
 
 ## Lint / type / test
 
