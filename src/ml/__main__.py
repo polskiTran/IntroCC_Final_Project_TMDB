@@ -30,6 +30,7 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     pred.add_argument("--budget", type=float, required=True, help="Budget in $M.")
     pred.add_argument("--runtime", type=float, default=110.0, help="Runtime in min.")
+    pred.add_argument("--year", type=int, default=2024, help="Release year.")
     pred.add_argument("--month", type=int, default=6, help="Release month (1-12).")
     pred.add_argument(
         "--genres",
@@ -40,6 +41,13 @@ def _build_parser() -> argparse.ArgumentParser:
     pred.add_argument("--director", type=str, default="Unknown")
     pred.add_argument("--studio", type=str, default="Unknown")
     pred.add_argument("--cast", type=str, default="Unknown")
+    pred.add_argument("--cast2", type=str, default="Unknown")
+    pred.add_argument("--cast3", type=str, default="Unknown")
+    pred.add_argument("--cast4", type=str, default="Unknown")
+    pred.add_argument("--cast5", type=str, default="Unknown")
+    pred.add_argument("--producer", type=str, default="Unknown")
+    pred.add_argument("--collection", type=str, default="Standalone")
+    pred.add_argument("--has-tagline", action="store_true")
 
     return parser
 
@@ -52,11 +60,19 @@ def _cmd_predict(args: argparse.Namespace) -> None:
             bundle,
             budget_musd=float(args.budget),
             runtime=float(args.runtime),
+            release_year=int(args.year),
             release_month=int(args.month),
             genres=genres,
             director_name=str(args.director),
             lead_production_company=str(args.studio),
             lead_cast_name=str(args.cast),
+            cast_2_name=str(args.cast2),
+            cast_3_name=str(args.cast3),
+            cast_4_name=str(args.cast4),
+            cast_5_name=str(args.cast5),
+            lead_producer_name=str(args.producer),
+            collection_name=str(args.collection),
+            has_tagline=bool(args.has_tagline),
         )
 
     revenue = _run(predict.load_bundle("revenue"))

@@ -21,15 +21,20 @@ import streamlit as st  # noqa: E402
 
 from src.app._data import gold_path, gold_path_exists, load_gold  # noqa: E402
 from src.config import get_settings  # noqa: E402
+from src.ingest.embeddings import embed_single_overview  # noqa: E402
+from src.ml.model_card import read_model_card  # noqa: E402
 from src.ml.predict import LoadedBundle, bundle_exists, load_bundle, predict_one  # noqa: E402
 
 
 st.set_page_config(page_title="ML prediction", layout="wide")
 st.title("ML prediction")
 st.caption(
-    "Two `HistGradientBoostingRegressor` models (revenue & rating) trained on "
-    "the Gold table with leakage-safe target encoding for director / studio / "
-    "lead cast. Run `uv run python -m src.ml train` to refresh the artefacts."
+    "Revenue uses a `CatBoostRegressor`; rating is an ensemble of CatBoost + "
+    "`TabPFNRegressor` blended on out-of-fold predictions (falls back to "
+    "CatBoost-only when TabPFN isn't available). Director / studio / top-5 "
+    "cast / producer / collection are consumed as **native categorical "
+    "features**. GPU-accelerated when available, CPU otherwise. Run "
+    "`uv run python -m src.ml train` to refresh the artefacts."
 )
 
 settings = get_settings()
@@ -85,26 +90,63 @@ def _metrics_frame(bundle: LoadedBundle) -> pd.DataFrame:
     hold = bundle.metadata["holdout_metrics"]
     cv = bundle.metadata["cv_metrics"]
     ridge = bundle.metadata["baseline_holdout_metrics"]
-    rows = [
+    blend_weights = bundle.metadata.get("blend_weights")
+    cb_hold = bundle.metadata.get("catboost_holdout_metrics")
+    tp_hold = bundle.metadata.get("tabpfn_holdout_metrics")
+
+    rows: list[dict[str, float | str]] = []
+    if blend_weights:
+        rows.append(
+            {
+                "Split": "Holdout (blend)",
+                "R²": hold["r2"],
+                "MAE": hold["mae"],
+                "RMSE": hold["rmse"],
+            }
+        )
+        if cb_hold:
+            rows.append(
+                {
+                    "Split": "Holdout (CatBoost)",
+                    "R²": cb_hold["r2"],
+                    "MAE": cb_hold["mae"],
+                    "RMSE": cb_hold["rmse"],
+                }
+            )
+        if tp_hold:
+            rows.append(
+                {
+                    "Split": "Holdout (TabPFN)",
+                    "R²": tp_hold["r2"],
+                    "MAE": tp_hold["mae"],
+                    "RMSE": tp_hold["rmse"],
+                }
+            )
+    else:
+        rows.append(
+            {
+                "Split": "Holdout (CatBoost)",
+                "R²": hold["r2"],
+                "MAE": hold["mae"],
+                "RMSE": hold["rmse"],
+            }
+        )
+    rows.append(
         {
-            "Split": "Holdout (HGB)",
-            "R²": hold["r2"],
-            "MAE": hold["mae"],
-            "RMSE": hold["rmse"],
-        },
-        {
-            "Split": "5-fold CV (HGB)",
+            "Split": "5-fold CV (CatBoost)",
             "R²": cv["r2"],
             "MAE": cv["mae"],
             "RMSE": cv["rmse"],
-        },
+        }
+    )
+    rows.append(
         {
             "Split": "Holdout (Ridge baseline)",
             "R²": ridge["r2"],
             "MAE": ridge["mae"],
             "RMSE": ridge["rmse"],
-        },
-    ]
+        }
+    )
     return pd.DataFrame(rows)
 
 
@@ -115,10 +157,23 @@ def _render_findings(
     y_format: str,
     extra_note: str | None = None,
 ) -> None:
-    col_a, col_b, col_c = st.columns(3)
+    col_a, col_b, col_c, col_d = st.columns(4)
     col_a.metric("Train rows", f"{bundle.metadata['n_train']:,}")
     col_b.metric("Test rows", f"{bundle.metadata['n_test']:,}")
     col_c.metric("Holdout R²", f"{bundle.metadata['holdout_metrics']['r2']:.3f}")
+    task_type = bundle.metadata.get("task_type", "CPU")
+    best_iter = bundle.metadata.get("best_iteration")
+    blend_weights = bundle.metadata.get("blend_weights")
+    if blend_weights:
+        device_label = (
+            f"CatBoost+TabPFN ({task_type}) · "
+            f"{blend_weights['catboost']:.2f}/{blend_weights['tabpfn']:.2f}"
+        )
+    else:
+        device_label = f"CatBoost ({task_type})"
+        if best_iter:
+            device_label += f" · {best_iter} trees"
+    col_d.metric("Model", device_label)
 
     st.subheader("Metrics")
     st.caption(
@@ -232,7 +287,7 @@ def _top_values(col: str, _cache_key: str, limit: int = 400) -> list[str]:
 _GOLD_CACHE_KEY = str(gold_path(settings))
 
 
-tab_findings, tab_predict = st.tabs(["Findings", "Predict"])
+tab_findings, tab_predict, tab_card = st.tabs(["Findings", "Predict", "Model card"])
 
 with tab_findings:
     st.markdown(
@@ -246,9 +301,10 @@ with tab_findings:
         y_label="revenue ($M)",
         y_format=".1f",
         extra_note=(
-            "HGB uses target-encoded director / studio / lead cast, multi-hot "
-            "genres, cyclical release month, budget, and runtime. Budget and "
-            "the target-encoded studio are consistently the strongest signals."
+            "CatBoost consumes director / studio / lead cast as **native "
+            "categoricals** (ordered boosting handles leakage), alongside "
+            "multi-hot genres, cyclical release month, budget, and runtime. "
+            "Budget and studio identity are consistently the strongest signals."
         ),
     )
 
@@ -264,9 +320,12 @@ with tab_findings:
         y_label="rating",
         y_format=".2f",
         extra_note=(
-            "Rating is noticeably harder than revenue: explanatory power is "
-            "modest and a linear Ridge baseline can hold its own. Runtime, "
-            "director, and lead cast dominate the remaining signal."
+            "Rating is noticeably harder than revenue. The v2 pipeline blends "
+            "CatBoost (tree-based, strong on categoricals) with TabPFN "
+            "(transformer pretrained for small tabular regression) using "
+            "Ridge-fitted non-negative weights. When the blend is active, "
+            "component R² rows above break out each model's standalone "
+            "performance on the same holdout."
         ),
     )
 
@@ -277,18 +336,24 @@ with tab_findings:
         "release month adds a small seasonality bump that matches the heatmap in "
         "the analytics page.\n"
         "- **Rating** is dominated by crew/cast identity with a runtime nudge. "
-        "Lists of target-encoded categoricals help, but headroom is limited by "
-        "genuine noise in user ratings.\n"
-        "- Target encoding + HGB comfortably beats a Ridge baseline on revenue; "
-        "on rating the two are close, which is itself a useful finding about "
-        "the signal-to-noise ratio."
+        "Native CatBoost categoricals preserve rare directors / studios / cast "
+        "instead of smoothing them toward the global prior, but headroom is "
+        "limited by genuine noise in user ratings.\n"
+        "- CatBoost with native categorical features comfortably beats the "
+        "Ridge + target-encoding baseline on revenue; on rating the two are "
+        "closer, which is itself a useful finding about the signal-to-noise "
+        "ratio."
     )
 
 
 with tab_predict:
     st.markdown(
         "Fill in the hypothetical movie's attributes. Unseen director / studio / "
-        "cast names fall back to the global prior learned by the target encoder."
+        "cast / producer / collection names are treated as a fresh category by "
+        "CatBoost and fall back to the model's prior for unknowns (same as the "
+        "training-time ``\"Unknown\"`` / ``\"Standalone\"`` sentinels). The "
+        "overview text is embedded with the same MiniLM + PCA pipeline used in "
+        "the Gold build."
     )
 
     genres_options = revenue.feature_spec.top_genres or sorted(
@@ -300,6 +365,18 @@ with tab_predict:
         *_top_values("lead_production_company", _GOLD_CACHE_KEY),
     ]
     cast_options = ["Unknown", *_top_values("lead_cast_name", _GOLD_CACHE_KEY)]
+    cast2_options = ["Unknown", *_top_values("cast_2_name", _GOLD_CACHE_KEY)]
+    cast3_options = ["Unknown", *_top_values("cast_3_name", _GOLD_CACHE_KEY)]
+    cast4_options = ["Unknown", *_top_values("cast_4_name", _GOLD_CACHE_KEY)]
+    cast5_options = ["Unknown", *_top_values("cast_5_name", _GOLD_CACHE_KEY)]
+    producer_options = [
+        "Unknown",
+        *_top_values("lead_producer_name", _GOLD_CACHE_KEY),
+    ]
+    collection_options = [
+        "Standalone",
+        *_top_values("collection_name", _GOLD_CACHE_KEY),
+    ]
 
     col_l, col_r = st.columns(2)
     with col_l:
@@ -317,6 +394,13 @@ with tab_predict:
             value=110,
             step=5,
         )
+        release_year = st.number_input(
+            "Release year",
+            min_value=settings.start_year,
+            max_value=2035,
+            value=2024,
+            step=1,
+        )
         month = st.selectbox(
             "Release month",
             options=list(range(1, 13)),
@@ -331,6 +415,13 @@ with tab_predict:
             else [],
             key="predict_genres",
         )
+        collection = st.selectbox(
+            "Franchise / collection",
+            options=collection_options,
+            index=0,
+            key="predict_collection",
+        )
+        has_tagline = st.checkbox("Has a marketing tagline", value=True)
     with col_r:
         director = st.selectbox(
             "Director", options=director_options, index=0, key="predict_director"
@@ -341,23 +432,66 @@ with tab_predict:
             index=0,
             key="predict_studio",
         )
+        producer = st.selectbox(
+            "Lead producer",
+            options=producer_options,
+            index=0,
+            key="predict_producer",
+        )
         cast = st.selectbox(
             "Lead cast", options=cast_options, index=0, key="predict_cast"
         )
+        cast_2 = st.selectbox(
+            "Cast #2", options=cast2_options, index=0, key="predict_cast2"
+        )
+        cast_3 = st.selectbox(
+            "Cast #3", options=cast3_options, index=0, key="predict_cast3"
+        )
+        cast_4 = st.selectbox(
+            "Cast #4", options=cast4_options, index=0, key="predict_cast4"
+        )
+        cast_5 = st.selectbox(
+            "Cast #5", options=cast5_options, index=0, key="predict_cast5"
+        )
+
+    overview_text = st.text_area(
+        "Plot overview (optional)",
+        value="",
+        placeholder=(
+            "A one-paragraph synopsis. Embedded on the fly with MiniLM + the "
+            "persisted PCA basis."
+        ),
+        help=(
+            "Leave blank to use a zero-vector. Requires `sentence-transformers` "
+            "to be importable and the PCA file at `data/gold/overview_pca.joblib`."
+        ),
+    )
 
     predict_clicked = st.button("Predict", type="primary")
     if predict_clicked:
+        overview_vec = None
+        if overview_text.strip():
+            overview_vec = embed_single_overview(overview_text, settings=settings)
 
         def _predict(bundle: LoadedBundle) -> float:
             return predict_one(
                 bundle,
                 budget_musd=float(budget),
                 runtime=float(runtime),
+                release_year=int(release_year),
                 release_month=int(month),
                 genres=list(genres_selected),
                 director_name=str(director),
                 lead_production_company=str(studio),
                 lead_cast_name=str(cast),
+                cast_2_name=str(cast_2),
+                cast_3_name=str(cast_3),
+                cast_4_name=str(cast_4),
+                cast_5_name=str(cast_5),
+                lead_producer_name=str(producer),
+                collection_name=str(collection),
+                has_tagline=bool(has_tagline),
+                overview_embedding=overview_vec,
             )
 
         predicted_revenue = _predict(revenue)
@@ -370,7 +504,24 @@ with tab_predict:
         m_c.metric("Implied ROI", f"{roi:.2f}x")
 
         st.caption(
-            "Revenue uses the HGB model trained on `log1p(revenue)` and is "
-            "back-transformed with `expm1`. Rating is clipped to [0, 10]. ROI "
-            "is computed from the predicted revenue and the budget you entered."
+            "Revenue uses the CatBoost model trained on `log1p(revenue)` and "
+            "is back-transformed with `expm1`. Rating uses the CatBoost + "
+            "TabPFN blend when available (falls back to CatBoost-only) and is "
+            "clipped to [0, 10]. ROI is computed from the predicted revenue "
+            "and the budget you entered."
+        )
+
+
+with tab_card:
+    card = read_model_card(settings)
+    if card is None:
+        st.info(
+            "No model card yet. Run `uv run python -m src.ml train` to "
+            "generate `data/ml/model_card.md`."
+        )
+    else:
+        st.markdown(card)
+        st.caption(
+            "Auto-generated from the trained bundles on every training run. "
+            "Stored at `data/ml/model_card.md`."
         )

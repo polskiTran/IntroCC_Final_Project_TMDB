@@ -24,7 +24,7 @@ from src.config import Settings, get_settings
 
 logger = logging.getLogger(__name__)
 
-CAST_TOP_N = 1
+CAST_TOP_N = 5
 CREW_JOBS = frozenset({"Director", "Producer"})
 
 
@@ -63,6 +63,15 @@ def _movie_row(doc: dict[str, Any]) -> dict[str, Any] | None:
         for c in doc.get("production_companies") or []
         if isinstance(c, dict) and c.get("name")
     ]
+    collection = doc.get("belongs_to_collection")
+    if isinstance(collection, dict):
+        collection_id = collection.get("id")
+        collection_name = collection.get("name")
+    else:
+        collection_id = None
+        collection_name = None
+    tagline = doc.get("tagline") or None
+    overview = doc.get("overview") or None
     return {
         "id": mid,
         "title": doc.get("title"),
@@ -80,6 +89,10 @@ def _movie_row(doc: dict[str, Any]) -> dict[str, Any] | None:
         "adult": bool(doc.get("adult", False)),
         "genres": genres,
         "production_companies": companies,
+        "collection_id": int(collection_id) if isinstance(collection_id, int) else None,
+        "collection_name": collection_name if isinstance(collection_name, str) else None,
+        "tagline": tagline if isinstance(tagline, str) else None,
+        "overview": overview if isinstance(overview, str) else None,
     }
 
 
@@ -137,6 +150,10 @@ def _movies_schema() -> dict[str, pl.DataType]:
         "adult": pl.Boolean(),
         "genres": pl.List(pl.String()),
         "production_companies": pl.List(pl.String()),
+        "collection_id": pl.Int64(),
+        "collection_name": pl.String(),
+        "tagline": pl.String(),
+        "overview": pl.String(),
     }
 
 

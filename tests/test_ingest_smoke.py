@@ -9,15 +9,18 @@ from __future__ import annotations
 import asyncio
 import gzip
 import json
+import os
 from pathlib import Path
 from typing import Any
 
-import polars as pl
-import pytest
+os.environ.setdefault("TMDB_ML_EMBEDDINGS", "0")
 
-from src.config import Settings
-from src.ingest import gold, silver
-from src.ingest.tmdb_client import TMDBClient, TMDBError
+import polars as pl  # noqa: E402
+import pytest  # noqa: E402
+
+from src.config import Settings  # noqa: E402
+from src.ingest import gold, silver  # noqa: E402
+from src.ingest.tmdb_client import TMDBClient, TMDBError  # noqa: E402
 
 
 def _write_bronze_movie(dir_path: Path, doc: dict[str, Any]) -> None:
@@ -49,15 +52,23 @@ def _movie_fixture(
         "adult": adult,
         "genres": [{"id": 28, "name": "Action"}, {"id": 12, "name": "Adventure"}],
         "production_companies": [{"id": 1, "name": "Acme Studios"}],
+        "belongs_to_collection": {"id": 9000, "name": "Demo Franchise"},
+        "tagline": "One line that sells the movie",
+        "overview": "A gripping ensemble chase across continents.",
         "credits": {
             "cast": [
                 {"order": 0, "id": 100, "name": "Lead Star", "character": "Hero"},
                 {"order": 1, "id": 101, "name": "Second", "character": "Sidekick"},
+                {"order": 2, "id": 102, "name": "Third", "character": "Villain"},
+                {"order": 3, "id": 103, "name": "Fourth", "character": "Mentor"},
+                {"order": 4, "id": 104, "name": "Fifth", "character": "Comic"},
+                {"order": 5, "id": 105, "name": "Sixth", "character": "Cameo"},
             ],
             "crew": [
                 {"job": "Director", "id": 200, "name": "The Director"},
                 {"job": "Producer", "id": 201, "name": "The Producer"},
-                {"job": "Editor", "id": 202, "name": "Not Kept"},
+                {"job": "Producer", "id": 202, "name": "Another Producer"},
+                {"job": "Editor", "id": 203, "name": "Not Kept"},
             ],
         },
     }
@@ -90,13 +101,16 @@ def test_silver_build_produces_parquet(tmp_settings: Settings) -> None:
 
     assert counts["movies"] == 2
     assert counts["cast"] == 2 * silver.CAST_TOP_N
-    assert counts["crew"] == 4
+    assert silver.CAST_TOP_N == 5
+    assert counts["crew"] == 2 * 3  # 1 director + 2 producers per kept movie
 
     movies_df = pl.read_parquet(tmp_settings.silver_dir / "movies.parquet")
     assert set(movies_df["id"].to_list()) == {1, 2}
     assert movies_df.schema["release_date"] == pl.Date
     assert movies_df.schema["genres"] == pl.List(pl.String)
     assert movies_df.schema["budget"] == pl.Int64
+    for col in ("collection_id", "collection_name", "tagline", "overview"):
+        assert col in movies_df.columns
 
     cast_df = pl.read_parquet(tmp_settings.silver_dir / "cast.parquet")
     assert set(cast_df["movie_id"].to_list()) == {1, 2}
@@ -165,6 +179,26 @@ def test_gold_applies_scope_filters(tmp_settings: Settings) -> None:
     assert row["revenue_musd"] == pytest.approx(5.0)
     assert row["roi"] == pytest.approx(4.0)
     assert "release_date" not in df.columns
+    for col in (
+        "cast_2_name",
+        "cast_3_name",
+        "cast_4_name",
+        "cast_5_name",
+        "n_cast",
+        "lead_producer_name",
+        "n_producers",
+        "collection_name",
+        "has_tagline",
+        "n_production_companies",
+        "n_genres",
+        "overview_embedding",
+    ):
+        assert col in df.columns
+    assert 0 < row["n_cast"] <= 5
+    assert row["collection_name"] == "Demo Franchise"
+    assert row["has_tagline"] == 1
+    assert row["n_producers"] == 2
+    assert row["lead_producer_name"] in {"The Producer", "Another Producer"}
 
 
 def test_gold_joins_director_and_lead_cast(tmp_settings: Settings) -> None:
@@ -192,3 +226,23 @@ def test_gold_joins_director_and_lead_cast(tmp_settings: Settings) -> None:
     assert row["lead_cast_name"] == "Top Billed"
     assert row["lead_cast_id"] == 900
     assert row["lead_production_company"] == "Acme Studios"
+    assert row["n_cast"] == 2
+    assert row["lead_producer_name"] == "A Producer"
+
+
+def test_gold_defaults_collection_and_tagline(tmp_settings: Settings) -> None:
+    doc = _movie_fixture(30)
+    doc.pop("belongs_to_collection")
+    doc["tagline"] = ""
+    doc["overview"] = None
+    _write_bronze_movie(tmp_settings.movies_bronze_dir, doc)
+    silver.build(tmp_settings)
+    gold.build(tmp_settings)
+
+    df = pl.read_parquet(tmp_settings.gold_dir / "gold_movies.parquet")
+    row = df.row(0, named=True)
+    assert row["collection_name"] == "Standalone"
+    assert row["has_tagline"] == 0
+    assert row["overview"] is None
+    embedding = row["overview_embedding"]
+    assert embedding is not None and len(embedding) == 16

@@ -13,7 +13,6 @@ from typing import Any
 import joblib
 import numpy as np
 import pandas as pd
-from sklearn.pipeline import Pipeline
 
 from src.config import Settings, get_settings
 from src.ml.features import FeatureSpec, build_single_row
@@ -30,7 +29,7 @@ class LoadedBundle:
     target: str
     target_label: str
     target_transform: str
-    pipeline: Pipeline
+    pipeline: Any
     feature_spec: FeatureSpec
     feature_columns: list[str]
     metadata: dict[str, Any]
@@ -72,6 +71,20 @@ def load_bundle(target: str, settings: Settings | None = None) -> LoadedBundle:
         )
     }
     metadata["top_genres"] = spec.top_genres
+    extra = payload.get("extra", {}) or {}
+    metadata["extra"] = extra
+    for key in (
+        "model",
+        "task_type",
+        "catboost_version",
+        "best_iteration",
+        "blend_weights",
+        "tabpfn_version",
+        "catboost_holdout_metrics",
+        "tabpfn_holdout_metrics",
+    ):
+        if key in extra:
+            metadata[key] = extra[key]
     return LoadedBundle(
         target=payload["target"],
         target_label=payload["target_label"],
@@ -98,21 +111,41 @@ def predict_one(
     *,
     budget_musd: float,
     runtime: float,
+    release_year: int,
     release_month: int,
     genres: list[str],
     director_name: str,
     lead_production_company: str,
     lead_cast_name: str,
+    cast_2_name: str = "Unknown",
+    cast_3_name: str = "Unknown",
+    cast_4_name: str = "Unknown",
+    cast_5_name: str = "Unknown",
+    lead_producer_name: str = "Unknown",
+    collection_name: str = "Standalone",
+    has_tagline: bool = False,
+    overview_embedding: np.ndarray | list[float] | None = None,
+    production_companies: list[str] | None = None,
 ) -> float:
     X = build_single_row(
         spec=bundle.feature_spec,
         budget_musd=budget_musd,
         runtime=runtime,
+        release_year=release_year,
         release_month=release_month,
         genres=genres,
+        production_companies=production_companies,
         director_name=director_name,
         lead_production_company=lead_production_company,
         lead_cast_name=lead_cast_name,
+        cast_2_name=cast_2_name,
+        cast_3_name=cast_3_name,
+        cast_4_name=cast_4_name,
+        cast_5_name=cast_5_name,
+        lead_producer_name=lead_producer_name,
+        collection_name=collection_name,
+        has_tagline=has_tagline,
+        overview_embedding=overview_embedding,
     )
     raw = float(bundle.pipeline.predict(X)[0])
     return _post_process(bundle.target, bundle.target_transform, raw)
