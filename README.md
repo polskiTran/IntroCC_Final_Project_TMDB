@@ -68,13 +68,15 @@ uv run streamlit run src/app/Home.py
 ### Pages
 1. [x] **Overview** (`src/app/Home.py`) — abstract, pipeline diagram, scope constraints, and per-layer data metadata (file count, size, row count, last updated) plus headline Gold stats.
 2. [x] **Sample data pull / inspect** (`src/app/pages/1_Sample_Data.py`) — filter the Gold table by year, genres, director, and budget; preview rows with selectable columns, summary statistics, and CSV download.
-3. [ ] Data analytics — planned.
+3. [x] **Data analytics** (`src/app/pages/2_Analytics.py`) — genre ROI, director leaderboard, hit/flop scatter, plus a release-month × genre seasonality heatmap and a top-production-companies leaderboard. All charts share sidebar filters (year range, minimum `vote_count`, genres).
 4. [ ] ML prediction — planned.
 
 ### Analytics page
 - Average ROI for each genre (bar chart)
 - Top director by avg vote average and avg movie budget (line on bar chart)
 - ROI scatter plot with 3 regions: hit, average, flop
+- Release-month × genre seasonality heatmap — median ROI / median revenue / movie-count toggle; cells with `n < 3` are blanked to avoid over-reading thin samples. Ties directly to the `release_month` ML feature.
+- Top production companies leaderboard — avg revenue bars coloured by median ROI; studio-level complement to the director chart and the second target-encoded feature in the ML page.
 
 ### ML prediction page
 

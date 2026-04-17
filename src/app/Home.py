@@ -41,7 +41,7 @@ st.markdown(
     """
     1. **Overview** — project abstract + data metadata (this page)
     2. **Sample data pull / inspect** — filter and preview the Gold table
-    3. **Data analytics** — ROI by genre, top directors, hit/flop scatter
+    3. **Data analytics** — ROI by genre, top directors, hit/flop scatter, release seasonality heatmap, top studios
     4. **ML prediction** — revenue and rating models
     """
 )

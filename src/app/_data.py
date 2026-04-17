@@ -155,6 +155,161 @@ def layer_metadata(settings: Settings | None = None) -> list[LayerInfo]:
     return out
 
 
+def roi_by_genre(df: pl.DataFrame) -> pl.DataFrame:
+    """Average ROI per genre after exploding the list column.
+
+    Returns columns `genre, avg_roi, n` sorted by `avg_roi` desc. Empty input
+    yields an empty frame with the same schema.
+    """
+    if df.height == 0 or "genres" not in df.columns:
+        return pl.DataFrame(
+            {"genre": [], "avg_roi": [], "n": []},
+            schema={"genre": pl.String, "avg_roi": pl.Float64, "n": pl.UInt32},
+        )
+    return (
+        df.select("genres", "roi")
+        .explode("genres")
+        .drop_nulls("genres")
+        .group_by("genres")
+        .agg(
+            pl.col("roi").mean().alias("avg_roi"),
+            pl.len().alias("n"),
+        )
+        .rename({"genres": "genre"})
+        .sort("avg_roi", descending=True)
+    )
+
+
+def top_directors(df: pl.DataFrame, n: int = 15, min_movies: int = 3) -> pl.DataFrame:
+    """Top directors by average budget with a companion avg-vote-average column.
+
+    Filters to directors with at least `min_movies` entries, then keeps the
+    top `n` by `avg_budget_musd`.
+    """
+    if df.height == 0 or "director_name" not in df.columns:
+        return pl.DataFrame(
+            schema={
+                "director_name": pl.String,
+                "n_movies": pl.UInt32,
+                "avg_budget_musd": pl.Float64,
+                "avg_vote_average": pl.Float64,
+            }
+        )
+    return (
+        df.drop_nulls("director_name")
+        .group_by("director_name")
+        .agg(
+            pl.len().alias("n_movies"),
+            pl.col("budget_musd").mean().alias("avg_budget_musd"),
+            pl.col("vote_average").mean().alias("avg_vote_average"),
+        )
+        .filter(pl.col("n_movies") >= min_movies)
+        .sort("avg_budget_musd", descending=True)
+        .head(n)
+    )
+
+
+def classify_roi(df: pl.DataFrame, hit: float = 3.0, flop: float = 0.0) -> pl.DataFrame:
+    """Attach a `roi_bucket` column with values in {Flop, Average, Hit}.
+
+    Flop when `roi <= flop`, Hit when `roi >= hit`, else Average.
+    """
+    if df.height == 0 or "roi" not in df.columns:
+        return df.with_columns(pl.lit(None, dtype=pl.String).alias("roi_bucket"))
+    return df.with_columns(
+        pl.when(pl.col("roi") <= flop)
+        .then(pl.lit("Flop"))
+        .when(pl.col("roi") >= hit)
+        .then(pl.lit("Hit"))
+        .otherwise(pl.lit("Average"))
+        .alias("roi_bucket")
+    )
+
+
+_MONTH_GENRE_METRICS = {
+    "median_roi": ("roi", "median"),
+    "median_revenue_musd": ("revenue_musd", "median"),
+    "count": (None, "count"),
+}
+
+
+def month_genre_matrix(
+    df: pl.DataFrame, metric: str = "median_roi", min_n: int = 3
+) -> pl.DataFrame:
+    """Aggregate by `release_month` x exploded `genres`.
+
+    Returns columns `release_month, genre, value, n`. For non-`count` metrics,
+    `value` is null when the cell has fewer than `min_n` observations so the
+    caller can grey-out sparse cells.
+    """
+    if metric not in _MONTH_GENRE_METRICS:
+        raise ValueError(
+            f"Unknown metric {metric!r}; expected one of {list(_MONTH_GENRE_METRICS)}"
+        )
+    empty_schema = {
+        "release_month": pl.Int32,
+        "genre": pl.String,
+        "value": pl.Float64,
+        "n": pl.UInt32,
+    }
+    if df.height == 0 or "genres" not in df.columns:
+        return pl.DataFrame(schema=empty_schema)
+
+    exploded = (
+        df.select("release_month", "genres", "roi", "revenue_musd")
+        .explode("genres")
+        .drop_nulls(["release_month", "genres"])
+        .rename({"genres": "genre"})
+    )
+    source_col, op = _MONTH_GENRE_METRICS[metric]
+    if op == "count":
+        agg_expr = pl.len().cast(pl.Float64).alias("value")
+    else:
+        assert source_col is not None
+        agg_expr = pl.col(source_col).median().alias("value")
+
+    grouped = (
+        exploded.group_by(["release_month", "genre"])
+        .agg(agg_expr, pl.len().alias("n"))
+        .sort(["release_month", "genre"])
+    )
+    if op != "count" and min_n > 0:
+        grouped = grouped.with_columns(
+            pl.when(pl.col("n") < min_n)
+            .then(None)
+            .otherwise(pl.col("value"))
+            .alias("value")
+        )
+    return grouped
+
+
+def top_production_companies(
+    df: pl.DataFrame, n: int = 15, min_movies: int = 3
+) -> pl.DataFrame:
+    """Top lead production companies by average revenue (million USD)."""
+    if df.height == 0 or "lead_production_company" not in df.columns:
+        return pl.DataFrame(
+            schema={
+                "lead_production_company": pl.String,
+                "n_movies": pl.UInt32,
+                "avg_revenue_musd": pl.Float64,
+                "median_roi": pl.Float64,
+            }
+        )
+    return (
+        df.drop_nulls("lead_production_company")
+        .group_by("lead_production_company")
+        .agg(
+            pl.len().alias("n_movies"),
+            pl.col("revenue_musd").mean().alias("avg_revenue_musd"),
+            pl.col("roi").median().alias("median_roi"),
+        )
+        .filter(pl.col("n_movies") >= min_movies)
+        .sort("avg_revenue_musd", descending=True)
+        .head(n)
+    )
+
+
 def scope_constraints(settings: Settings | None = None) -> dict[str, str]:
     settings = settings or get_settings()
     return {
