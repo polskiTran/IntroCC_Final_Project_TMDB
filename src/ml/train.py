@@ -26,6 +26,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import time
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any
@@ -43,6 +44,7 @@ from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
 from sklearn.model_selection import KFold, train_test_split
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler, TargetEncoder
+from tqdm.auto import tqdm
 
 from src.config import Settings, get_settings
 from src.ml.features import (
@@ -69,6 +71,15 @@ CATBOOST_CV_ITERATIONS = 600
 CATBOOST_EARLY_STOPPING = 50
 
 _TASK_TYPE_CACHE: str | None = None
+
+
+def _tqdm_disable(show_progress: bool | None) -> bool | None:
+    """Map ``show_progress`` to tqdm's ``disable`` (``None`` = auto / non-TTY)."""
+    if show_progress is True:
+        return False
+    if show_progress is False:
+        return True
+    return None
 
 
 @dataclass
@@ -154,7 +165,9 @@ def _resolve_task_type() -> str:
             verbose=False,
             allow_writing_files=False,
         )
-        probe.fit(np.array([[0.0], [1.0], [2.0], [3.0]]), np.array([0.0, 1.0, 2.0, 3.0]))
+        probe.fit(
+            np.array([[0.0], [1.0], [2.0], [3.0]]), np.array([0.0, 1.0, 2.0, 3.0])
+        )
     except Exception as exc:  # noqa: BLE001 - CatBoost raises many types on missing CUDA
         logger.info("CatBoost GPU unavailable (%s); falling back to CPU", exc)
         _TASK_TYPE_CACHE = "CPU"
@@ -187,7 +200,9 @@ def _build_catboost_model(
     spec: FeatureSpec, *, task_type: str, iterations: int = CATBOOST_ITERATIONS
 ) -> Pipeline:
     cat_idx = categorical_feature_indices(spec)
-    model = CatBoostRegressor(cat_features=cat_idx, **_catboost_kwargs(task_type, iterations=iterations))
+    model = CatBoostRegressor(
+        cat_features=cat_idx, **_catboost_kwargs(task_type, iterations=iterations)
+    )
     return Pipeline([("model", model)])
 
 
@@ -228,6 +243,9 @@ def _cv_metrics(
     X: pd.DataFrame,
     y: np.ndarray,
     task_type: str,
+    *,
+    tqdm_disable: bool | None = None,
+    cv_desc: str = "CV",
 ) -> Metrics:
     """5-fold CV with CatBoost. Fixed iterations (no early stopping per fold)
     to keep the per-fold budget identical and comparable.
@@ -240,7 +258,14 @@ def _cv_metrics(
     r2_scores: list[float] = []
     mae_scores: list[float] = []
     rmse_scores: list[float] = []
-    for tr_idx, va_idx in cv.split(X):
+    for tr_idx, va_idx in tqdm(
+        cv.split(X),
+        total=CV_SPLITS,
+        desc=cv_desc,
+        leave=False,
+        disable=tqdm_disable,
+        unit="fold",
+    ):
         X_tr, X_va = X.iloc[tr_idx], X.iloc[va_idx]
         y_tr, y_va = y[tr_idx], y[va_idx]
         fold_pipeline = _build_catboost_model(
@@ -325,11 +350,21 @@ def _oof_catboost(
     y: np.ndarray,
     task_type: str,
     weights: np.ndarray | None = None,
+    *,
+    tqdm_disable: bool | None = None,
+    oof_desc: str = "OOF CatBoost",
 ) -> np.ndarray:
     """5-fold out-of-fold predictions for CatBoost."""
     cv = KFold(n_splits=CV_SPLITS, shuffle=True, random_state=RANDOM_STATE)
     oof = np.zeros(len(y), dtype=np.float64)
-    for tr_idx, va_idx in cv.split(X):
+    for tr_idx, va_idx in tqdm(
+        cv.split(X),
+        total=CV_SPLITS,
+        desc=oof_desc,
+        leave=False,
+        disable=tqdm_disable,
+        unit="fold",
+    ):
         X_tr, X_va = X.iloc[tr_idx], X.iloc[va_idx]
         y_tr = y[tr_idx]
         w_tr = weights[tr_idx] if weights is not None else None
@@ -348,11 +383,21 @@ def _oof_tabpfn(
     spec: FeatureSpec,
     X: pd.DataFrame,
     y: np.ndarray,
+    *,
+    tqdm_disable: bool | None = None,
+    oof_desc: str = "OOF TabPFN",
 ) -> np.ndarray:
     """5-fold out-of-fold predictions for TabPFN."""
     cv = KFold(n_splits=CV_SPLITS, shuffle=True, random_state=RANDOM_STATE)
     oof = np.zeros(len(y), dtype=np.float64)
-    for tr_idx, va_idx in cv.split(X):
+    for tr_idx, va_idx in tqdm(
+        cv.split(X),
+        total=CV_SPLITS,
+        desc=oof_desc,
+        leave=False,
+        disable=tqdm_disable,
+        unit="fold",
+    ):
         X_tr, X_va = X.iloc[tr_idx], X.iloc[va_idx]
         component = tabpfn_model.TabPFNComponent(spec, random_state=RANDOM_STATE)
         component.fit(X_tr, y[tr_idx])
@@ -388,6 +433,7 @@ def _train_single(
     task_type: str,
     sample_weight_col: str | None = None,
     enable_blend: bool = False,
+    tqdm_disable: bool | None = None,
 ) -> ModelBundle:
     prepared = _prepare_frame(df, target_col)
     if prepared.height < 20:
@@ -448,7 +494,14 @@ def _train_single(
 
     y_pred_cb = pipeline.predict(X_test)
     cb_holdout = _metrics(y_test, y_pred_cb)
-    cv = _cv_metrics(spec, X_all, y_trans, task_type=task_type)
+    cv = _cv_metrics(
+        spec,
+        X_all,
+        y_trans,
+        task_type=task_type,
+        tqdm_disable=tqdm_disable,
+        cv_desc=f"CV {target_col}",
+    )
 
     baseline_pipeline = _build_ridge_pipeline(spec)
     baseline_pipeline.fit(X_train, y_train)
@@ -466,17 +519,27 @@ def _train_single(
             target_col,
         )
         try:
-            tp_component = tabpfn_model.TabPFNComponent(
-                spec, random_state=RANDOM_STATE
-            )
+            tp_component = tabpfn_model.TabPFNComponent(spec, random_state=RANDOM_STATE)
             tp_component.fit(X_train, y_train)
             y_pred_tp = tp_component.predict(X_test)
             tp_holdout = _metrics(y_test, y_pred_tp)
 
             oof_cb = _oof_catboost(
-                spec, X_train, y_train, task_type=task_type, weights=w_train
+                spec,
+                X_train,
+                y_train,
+                task_type=task_type,
+                weights=w_train,
+                tqdm_disable=tqdm_disable,
+                oof_desc=f"OOF CatBoost {target_col}",
             )
-            oof_tp = _oof_tabpfn(spec, X_train, y_train)
+            oof_tp = _oof_tabpfn(
+                spec,
+                X_train,
+                y_train,
+                tqdm_disable=tqdm_disable,
+                oof_desc=f"OOF TabPFN {target_col}",
+            )
             blend_weights = _fit_blend_weights(oof_cb, oof_tp, y_train)
             logger.info(
                 "blend weights for %s: catboost=%.3f tabpfn=%.3f",
@@ -577,8 +640,14 @@ def _train_single(
 def train(
     df: pl.DataFrame | None = None,
     settings: Settings | None = None,
+    *,
+    show_progress: bool | None = None,
 ) -> dict[str, ModelBundle]:
-    """Train both models, save bundles and metrics.json. Returns the bundles."""
+    """Train both models, save bundles and metrics.json. Returns the bundles.
+
+    ``show_progress``: when ``True``, always show tqdm bars; when ``False``,
+    never show; when ``None`` (default), tqdm hides bars on non-TTY stderr.
+    """
     settings = settings or get_settings()
     if df is None:
         gold_file = settings.gold_dir / "gold_movies.parquet"
@@ -594,27 +663,46 @@ def train(
         )
 
     task_type = _resolve_task_type()
+    tqdm_disable = _tqdm_disable(show_progress)
+    t_train_start = time.perf_counter()
 
     logger.info(
         "training revenue model on %d rows (task_type=%s)", df.height, task_type
     )
-    revenue = _train_single(
-        df,
-        target_col="revenue_musd",
-        target_label="Revenue (million USD)",
-        target_transform="log1p",
-        task_type=task_type,
-    )
-    logger.info("training rating model on %d rows (task_type=%s)", df.height, task_type)
-    rating = _train_single(
-        df,
-        target_col="vote_average",
-        target_label="User rating (0-10)",
-        target_transform="identity",
-        task_type=task_type,
-        sample_weight_col="vote_count",
-        enable_blend=True,
-    )
+    with tqdm(
+        total=2,
+        desc="ML train",
+        unit="model",
+        disable=tqdm_disable,
+    ) as bar:
+        bar.set_postfix_str("revenue_musd")
+        revenue = _train_single(
+            df,
+            target_col="revenue_musd",
+            target_label="Revenue (million USD)",
+            target_transform="log1p",
+            task_type=task_type,
+            tqdm_disable=tqdm_disable,
+        )
+        bar.update(1)
+        logger.info(
+            "training rating model on %d rows (task_type=%s)", df.height, task_type
+        )
+        bar.set_postfix_str("vote_average")
+        rating = _train_single(
+            df,
+            target_col="vote_average",
+            target_label="User rating (0-10)",
+            target_transform="identity",
+            task_type=task_type,
+            sample_weight_col="vote_count",
+            enable_blend=True,
+            tqdm_disable=tqdm_disable,
+        )
+        bar.update(1)
+
+    train_elapsed_s = time.perf_counter() - t_train_start
+    logger.info("ML training wall time: %.1fs", train_elapsed_s)
 
     ml_dir = settings.ml_dir
     ml_dir.mkdir(parents=True, exist_ok=True)
