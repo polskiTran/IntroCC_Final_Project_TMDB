@@ -7,6 +7,8 @@ Streaming pipeline:
   - Per-movie files live under id_prefix=NNN/ for S3-friendly prefixes.
 
 Idempotent: existing per-movie files are skipped on re-run.
+
+Writes are always to local disk; use ``python -m src.ingest upload-s3`` to copy to S3.
 """
 
 from __future__ import annotations
@@ -31,7 +33,6 @@ from src.ingest.storage import (
     write_json_gz,
 )
 from src.ingest.tmdb_client import TMDBClient
-from src.io.store import write_gzipped_json_s3, write_text_s3
 
 logger = logging.getLogger(__name__)
 
@@ -67,21 +68,11 @@ def _manifest_path(settings: Settings) -> Path:
 
 
 def _write_manifest(settings: Settings, payload: dict[str, Any]) -> None:
-    if settings.data_backend != "s3":
-        path = _manifest_path(settings)
-        path.parent.mkdir(parents=True, exist_ok=True)
-        tmp = path.with_suffix(".tmp")
-        tmp.write_text(json.dumps(payload, indent=2), encoding="utf-8")
-        tmp.replace(path)
-        return
-    write_text_s3(
-        settings,
-        "bronze",
-        "manifests",
-        f"run_date={date.today().isoformat()}",
-        "run_manifest.json",
-        text=json.dumps(payload, indent=2),
-    )
+    path = _manifest_path(settings)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix(".tmp")
+    tmp.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+    tmp.replace(path)
 
 
 @dataclass
@@ -160,19 +151,8 @@ async def _discover_producer(
 
     first = await fetch_page(1)
     if settings.save_discover_pages:
-        if settings.data_backend != "s3":
-            run_dir.mkdir(parents=True, exist_ok=True)
-            write_json_gz(run_dir / "page_0001.json.gz", first)
-        else:
-            await asyncio.to_thread(
-                write_gzipped_json_s3,
-                settings,
-                "bronze",
-                "discover",
-                date.today().isoformat(),
-                "page_0001.json.gz",
-                payload=first,
-            )
+        run_dir.mkdir(parents=True, exist_ok=True)
+        write_json_gz(run_dir / "page_0001.json.gz", first)
 
     await ingest_results(first)
 
@@ -195,19 +175,8 @@ async def _discover_producer(
             if len(seen) >= settings.sample_counts:
                 break
             if settings.save_discover_pages:
-                if settings.data_backend != "s3":
-                    run_dir.mkdir(parents=True, exist_ok=True)
-                    write_json_gz(run_dir / f"page_{p:04d}.json.gz", payload)
-                else:
-                    await asyncio.to_thread(
-                        write_gzipped_json_s3,
-                        settings,
-                        "bronze",
-                        "discover",
-                        date.today().isoformat(),
-                        f"page_{p:04d}.json.gz",
-                        payload=payload,
-                    )
+                run_dir.mkdir(parents=True, exist_ok=True)
+                write_json_gz(run_dir / f"page_{p:04d}.json.gz", payload)
             await ingest_results(payload)
 
         page = batch_end + 1
@@ -256,8 +225,7 @@ async def _run_bronze_with_client(
     settings: Settings,
     client: Any,
 ) -> dict[str, Any]:
-    if settings.data_backend != "s3":
-        settings.movies_bronze_dir.mkdir(parents=True, exist_ok=True)
+    settings.movies_bronze_dir.mkdir(parents=True, exist_ok=True)
 
     discovered_ids: list[int] = []
     stats = _DetailStats()

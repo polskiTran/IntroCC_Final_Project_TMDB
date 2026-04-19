@@ -10,23 +10,22 @@ Produces three files under `settings.silver_dir`:
 
 The builder is idempotent: it rebuilds from Bronze every run, overwriting
 the output files in one pass.
+
+Writes are always to local disk; use ``python -m src.ingest upload-s3`` to copy to S3.
 """
 
 from __future__ import annotations
 
 import gzip
-import io
 import json
 import logging
 from datetime import date
 from pathlib import Path
 from typing import Any, Iterator
 
-import boto3
 import polars as pl
 
 from src.config import Settings, get_settings
-from src.io.store import silver_parquet_ref, s3_object_key
 
 logger = logging.getLogger(__name__)
 
@@ -43,36 +42,6 @@ def _iter_bronze_movies(bronze_dir: Path) -> Iterator[dict[str, Any]]:
                 yield json.load(f)
         except (OSError, json.JSONDecodeError) as exc:
             logger.warning("skipping unreadable bronze file %s: %s", p, exc)
-
-
-def _iter_bronze_movies_s3(settings: Settings) -> Iterator[dict[str, Any]]:
-    client = boto3.client("s3", region_name=settings.aws_region)
-    prefix = s3_object_key(settings, "bronze", "movies") + "/"
-    bucket = settings.s3_bucket
-    paginator = client.get_paginator("list_objects_v2")
-    keys: list[str] = []
-    for page in paginator.paginate(Bucket=bucket, Prefix=prefix):
-        for obj in page.get("Contents", []):
-            k = obj["Key"]
-            if k.endswith(".json.gz"):
-                keys.append(k)
-    for k in sorted(keys):
-        try:
-            body = client.get_object(Bucket=bucket, Key=k)["Body"].read()
-            buf = io.BytesIO(body)
-            with gzip.open(buf, "rt", encoding="utf-8") as f:
-                yield json.load(f)
-        except (OSError, json.JSONDecodeError) as exc:
-            logger.warning("skipping unreadable bronze file %s: %s", k, exc)
-
-
-def _iter_bronze_movies_from_settings(
-    settings: Settings,
-) -> Iterator[dict[str, Any]]:
-    if settings.data_backend != "s3":
-        yield from _iter_bronze_movies(settings.movies_bronze_dir)
-    else:
-        yield from _iter_bronze_movies_s3(settings)
 
 
 def _parse_release_date(raw: Any) -> date | None:
@@ -195,18 +164,16 @@ def _crew_schema() -> dict[str, pl.DataType]:
     }
 
 
-def _write_silver_parquet(df: pl.DataFrame, settings: Settings, filename: str) -> None:
-    path, opts = silver_parquet_ref(settings, filename)
-    if opts is None:
-        df.write_parquet(path)
-    else:
-        df.write_parquet(str(path), storage_options=opts)
+def _write_silver_parquet(df: pl.DataFrame, path: Path) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix(path.suffix + ".tmp")
+    df.write_parquet(tmp)
+    tmp.replace(path)
 
 
 def build(settings: Settings | None = None) -> dict[str, int]:
     settings = settings or get_settings()
-    if settings.data_backend != "s3":
-        settings.silver_dir.mkdir(parents=True, exist_ok=True)
+    settings.silver_dir.mkdir(parents=True, exist_ok=True)
 
     movies: list[dict[str, Any]] = []
     cast: list[dict[str, Any]] = []
@@ -215,7 +182,7 @@ def build(settings: Settings | None = None) -> dict[str, int]:
     start_date = date(settings.start_year, 1, 1)
     today = date.today()
 
-    for doc in _iter_bronze_movies_from_settings(settings):
+    for doc in _iter_bronze_movies(settings.movies_bronze_dir):
         row = _movie_row(doc)
         if row is None:
             continue
@@ -234,9 +201,9 @@ def build(settings: Settings | None = None) -> dict[str, int]:
     cast_df = pl.DataFrame(cast, schema=_cast_schema())
     crew_df = pl.DataFrame(crew, schema=_crew_schema())
 
-    _write_silver_parquet(movies_df, settings, "movies.parquet")
-    _write_silver_parquet(cast_df, settings, "cast.parquet")
-    _write_silver_parquet(crew_df, settings, "crew.parquet")
+    _write_silver_parquet(movies_df, settings.silver_dir / "movies.parquet")
+    _write_silver_parquet(cast_df, settings.silver_dir / "cast.parquet")
+    _write_silver_parquet(crew_df, settings.silver_dir / "crew.parquet")
 
     counts = {
         "movies": movies_df.height,

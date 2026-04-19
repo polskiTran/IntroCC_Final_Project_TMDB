@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 from datetime import UTC, datetime
+from functools import lru_cache
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -31,10 +32,34 @@ def s3_uri(settings: Settings, *parts: str) -> str:
     return f"s3://{settings.s3_bucket}/{key}"
 
 
-def _s3_client(settings: Settings) -> Any:
-    import boto3
+def _s3_max_pool_connections(settings: Settings) -> int:
+    """Urllib3 default pool size is 10; parallel uploads need a larger pool.
 
-    return boto3.client("s3", region_name=settings.aws_region)
+    Oversubscribe so parallel uploads do not log "Connection pool is full".
+    """
+    return max(32, settings.concurrency * 3, settings.s3_upload_concurrency * 2)
+
+
+@lru_cache(maxsize=32)
+def _s3_client_cached(bucket: str, region: str, max_pool_connections: int) -> Any:
+    """One boto3 client per (bucket, region, pool size) for connection pool reuse."""
+    import boto3
+    from botocore.config import Config
+
+    return boto3.client(
+        "s3",
+        region_name=region,
+        config=Config(max_pool_connections=max_pool_connections),
+    )
+
+
+def get_s3_client(settings: Settings) -> Any:
+    """Return a cached boto3 S3 client for ``settings`` bucket and region."""
+    return _s3_client_cached(
+        settings.s3_bucket,
+        settings.aws_region,
+        _s3_max_pool_connections(settings),
+    )
 
 
 def polars_storage_options(settings: Settings) -> dict[str, str] | None:
@@ -70,7 +95,7 @@ def gold_parquet_ref(
 
 
 def s3_object_exists(settings: Settings, *parts: str) -> bool:
-    client = _s3_client(settings)
+    client = get_s3_client(settings)
     key = s3_object_key(settings, *parts)
     from botocore.exceptions import ClientError
 
@@ -97,7 +122,7 @@ def write_gzipped_json_s3(
     with gzip.GzipFile(fileobj=buf, mode="wb", mtime=0) as gz:
         gz.write(json.dumps(payload, ensure_ascii=False).encode("utf-8"))
     key = s3_object_key(settings, *parts)
-    _s3_client(settings).put_object(
+    get_s3_client(settings).put_object(
         Bucket=settings.s3_bucket,
         Key=key,
         Body=buf.getvalue(),
@@ -106,7 +131,7 @@ def write_gzipped_json_s3(
 
 def write_text_s3(settings: Settings, *parts: str, text: str) -> None:
     key = s3_object_key(settings, *parts)
-    _s3_client(settings).put_object(
+    get_s3_client(settings).put_object(
         Bucket=settings.s3_bucket,
         Key=key,
         Body=text.encode("utf-8"),
@@ -132,7 +157,7 @@ def s3_prefix_metrics(
     from botocore.exceptions import ClientError
 
     key = s3_object_key(settings, *prefix_parts)
-    client = _s3_client(settings)
+    client = get_s3_client(settings)
     bucket = settings.s3_bucket
 
     try:

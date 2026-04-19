@@ -5,6 +5,8 @@ constraints from AGENTS.md enforced: `budget >= min_budget_usd` and `revenue > 0
 Release granularity is monthly (release_date column is dropped).
 
 Gold is a full rebuild from Silver on every run, so the step is idempotent.
+
+Writes are always to local disk; use ``python -m src.ingest upload-s3`` to copy to S3.
 """
 
 from __future__ import annotations
@@ -14,16 +16,14 @@ import logging
 import polars as pl
 
 from src.config import Settings, get_settings
-from src.io.store import gold_parquet_ref, silver_parquet_ref
+from src.io.store import GOLD_FILENAME
 
 logger = logging.getLogger(__name__)
 
 
 def _read_silver_parquet(settings: Settings, name: str) -> pl.DataFrame:
-    path, opts = silver_parquet_ref(settings, name)
-    if opts is None:
-        return pl.read_parquet(path)
-    return pl.read_parquet(str(path), storage_options=opts)
+    path = settings.silver_dir / name
+    return pl.read_parquet(path)
 
 
 _GOLD_COLUMNS = [
@@ -77,8 +77,8 @@ def _load_lead_cast(settings: Settings) -> pl.DataFrame:
 
 def build(settings: Settings | None = None) -> dict[str, int]:
     settings = settings or get_settings()
-    if settings.data_backend != "s3":
-        settings.gold_dir.mkdir(parents=True, exist_ok=True)
+    logger.info("gold: build starting from local silver at %s", settings.silver_dir)
+    settings.gold_dir.mkdir(parents=True, exist_ok=True)
 
     movies = _read_silver_parquet(settings, "movies.parquet")
     director = _load_director(settings)
@@ -102,11 +102,10 @@ def build(settings: Settings | None = None) -> dict[str, int]:
     )
 
     gold = enriched.select(_GOLD_COLUMNS)
-    gpath, gopts = gold_parquet_ref(settings)
-    if gopts is None:
-        gold.write_parquet(gpath)
-    else:
-        gold.write_parquet(str(gpath), storage_options=gopts)
+    out = settings.gold_dir / GOLD_FILENAME
+    tmp = out.with_suffix(out.suffix + ".tmp")
+    gold.write_parquet(tmp)
+    tmp.replace(out)
 
     counts = {
         "silver_movies": movies.height,

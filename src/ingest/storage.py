@@ -1,4 +1,4 @@
-"""Filesystem helpers for Bronze artifacts (local paths and S3 keys).
+"""Filesystem helpers for Bronze artifacts (local paths).
 
 Movie files are stored under hashed prefix folders to avoid huge flat directories:
 
@@ -13,7 +13,6 @@ from pathlib import Path
 from typing import Any
 
 from src.config import Settings
-from src.io.store import s3_object_exists, write_gzipped_json_s3
 
 
 def id_prefix_dir_name(movie_id: int) -> str:
@@ -42,27 +41,9 @@ def exists(path: Path) -> bool:
 def write_bronze_movie_json(
     settings: Settings, movie_id: int, payload: dict[str, Any]
 ) -> None:
-    if settings.data_backend != "s3":
-        out = bronze_movie_path(settings.movies_bronze_dir, movie_id)
-        write_json_gz(out, payload)
-        return
-    write_gzipped_json_s3(
-        settings,
-        "bronze",
-        "movies",
-        id_prefix_dir_name(movie_id),
-        f"{movie_id}.json.gz",
-        payload=payload,
-    )
+    out = bronze_movie_path(settings.movies_bronze_dir, movie_id)
+    write_json_gz(out, payload)
 
 
 def bronze_movie_exists(settings: Settings, movie_id: int) -> bool:
-    if settings.data_backend != "s3":
-        return bronze_movie_path(settings.movies_bronze_dir, movie_id).is_file()
-    return s3_object_exists(
-        settings,
-        "bronze",
-        "movies",
-        id_prefix_dir_name(movie_id),
-        f"{movie_id}.json.gz",
-    )
+    return bronze_movie_path(settings.movies_bronze_dir, movie_id).is_file()

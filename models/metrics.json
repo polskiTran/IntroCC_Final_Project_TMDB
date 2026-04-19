@@ -28,130 +28,130 @@
       "lead_cast_name"
     ],
     "holdout_metrics": {
-      "r2": 0.5875775597983219,
-      "mae": 0.8556617659896717,
-      "rmse": 1.0800763459791114
+      "r2": 0.587538620050992,
+      "mae": 0.8564900270268174,
+      "rmse": 1.080127333635468
     },
     "cv_metrics": {
-      "r2": 0.5578165319408477,
-      "mae": 0.8501838336628736,
-      "rmse": 1.0936285334038522
+      "r2": 0.5594756416843666,
+      "mae": 0.8475831211054909,
+      "rmse": 1.0916647821812318
     },
     "baseline_ridge_holdout_metrics": {
-      "r2": 0.48840051012574404,
-      "mae": 0.9678935863943746,
-      "rmse": 1.2029521774758263
+      "r2": 0.48843634384257006,
+      "mae": 0.9678488074974909,
+      "rmse": 1.202910047837916
     },
     "permutation_importance": [
       {
         "feature": "budget_musd",
-        "importance_mean": 0.5433341964786127,
-        "importance_std": 0.036146344733897245
-      },
-      {
-        "feature": "director_name",
-        "importance_mean": 0.05192644919925382,
-        "importance_std": 0.00839724392942495
+        "importance_mean": 0.5436606318440314,
+        "importance_std": 0.037807178049118755
       },
       {
         "feature": "lead_production_company",
-        "importance_mean": 0.05182560205461253,
-        "importance_std": 0.010462827012115384
+        "importance_mean": 0.05408097623186199,
+        "importance_std": 0.011239307949529886
+      },
+      {
+        "feature": "director_name",
+        "importance_mean": 0.05271502645697843,
+        "importance_std": 0.008273281306716977
       },
       {
         "feature": "lead_cast_name",
-        "importance_mean": 0.017151285369602753,
-        "importance_std": 0.005571659736303922
+        "importance_mean": 0.019762630534620997,
+        "importance_std": 0.0056548363874197516
       },
       {
         "feature": "runtime",
-        "importance_mean": 0.015373727363278666,
-        "importance_std": 0.0030017021433604977
+        "importance_mean": 0.013001046266375594,
+        "importance_std": 0.004111144884426904
       },
       {
         "feature": "genre_Drama",
-        "importance_mean": 0.011068475256352328,
-        "importance_std": 0.0062313424767169966
+        "importance_mean": 0.009158675589549081,
+        "importance_std": 0.005288511915515471
       },
       {
         "feature": "month_sin",
-        "importance_mean": 0.005433999787584298,
-        "importance_std": 0.0018677502189248297
-      },
-      {
-        "feature": "genre_Romance",
-        "importance_mean": 0.005162076682537697,
-        "importance_std": 0.0012347869690618404
+        "importance_mean": 0.005299058590954231,
+        "importance_std": 0.0010332933228379853
       },
       {
         "feature": "genre_Adventure",
-        "importance_mean": 0.0041885532324477115,
-        "importance_std": 0.00026829621508985663
+        "importance_mean": 0.004897004570193509,
+        "importance_std": 0.00037993287129521223
+      },
+      {
+        "feature": "genre_Romance",
+        "importance_mean": 0.004676185811430233,
+        "importance_std": 0.0007754112974437696
       },
       {
         "feature": "genre_Horror",
-        "importance_mean": 0.003422109596197509,
-        "importance_std": 0.0011362522583908017
+        "importance_mean": 0.003977854428698491,
+        "importance_std": 0.0012134990921731225
       },
       {
         "feature": "genre_Comedy",
-        "importance_mean": 0.003376272724443785,
-        "importance_std": 0.0016001918257910282
+        "importance_mean": 0.003328150587252998,
+        "importance_std": 0.0017230875560910988
       },
       {
         "feature": "genre_Thriller",
-        "importance_mean": 0.002926547394061352,
-        "importance_std": 0.0016076841582475352
-      },
-      {
-        "feature": "genre_Crime",
-        "importance_mean": 0.002520719496912416,
-        "importance_std": 0.00149682242073425
+        "importance_mean": 0.0030357303423153683,
+        "importance_std": 0.0016136375693804978
       },
       {
         "feature": "genre_Science Fiction",
-        "importance_mean": 0.0022129677359903344,
-        "importance_std": 0.0007863307815125535
-      },
-      {
-        "feature": "genre_Fantasy",
-        "importance_mean": 0.0020054106581339328,
-        "importance_std": 0.0013760391643265323
+        "importance_mean": 0.0022706464132842496,
+        "importance_std": 0.0007720760767841753
       },
       {
         "feature": "genre_Action",
-        "importance_mean": 0.0019645184965574546,
-        "importance_std": 0.001276040589078473
+        "importance_mean": 0.0018809436362341447,
+        "importance_std": 0.0014833679484889046
       },
       {
-        "feature": "genre_History",
-        "importance_mean": 0.0010818167013759705,
-        "importance_std": 0.0006176311058615667
-      },
-      {
-        "feature": "genre_Animation",
-        "importance_mean": 0.0009197474454517351,
-        "importance_std": 0.00036127131177151554
+        "feature": "genre_Crime",
+        "importance_mean": 0.0016372419853305953,
+        "importance_std": 0.0015130313479305266
       },
       {
         "feature": "genre_Family",
-        "importance_mean": 0.00025981503719563204,
-        "importance_std": 0.0010027662575366756
+        "importance_mean": 0.0012512418062168517,
+        "importance_std": 0.0012265752413122295
       },
       {
-        "feature": "genre_Music",
-        "importance_mean": -5.912508413850048e-05,
-        "importance_std": 0.0004531804701343739
+        "feature": "genre_Fantasy",
+        "importance_mean": 0.0011302379447326594,
+        "importance_std": 0.000998966391071297
       },
       {
         "feature": "month_cos",
-        "importance_mean": -0.00011430187645227186,
-        "importance_std": 0.001415383471788338
+        "importance_mean": 0.0008921181894234742,
+        "importance_std": 0.002005497841504754
+      },
+      {
+        "feature": "genre_Animation",
+        "importance_mean": 0.0007630323372820769,
+        "importance_std": 0.0003798158847453624
+      },
+      {
+        "feature": "genre_History",
+        "importance_mean": 0.00041854165793726584,
+        "importance_std": 0.0005675651903593589
+      },
+      {
+        "feature": "genre_Music",
+        "importance_mean": 0.00014348370547967448,
+        "importance_std": 0.0003263027189890312
       },
       {
         "feature": "genre_Mystery",
-        "importance_mean": -0.00027136514830616854,
-        "importance_std": 0.000386464452835057
+        "importance_mean": -0.00034505914576083986,
+        "importance_std": 0.0005139092529380156
       }
     ],
     "n_train": 4428,
@@ -175,9 +175,9 @@
       "Music"
     ],
     "revenue_space_metrics": {
-      "mae_musd": 69.74181295833763,
-      "rmse_musd": 140.8504848635676,
-      "mape_over_1M": 1.2302882194432858
+      "mae_musd": 69.9128231127365,
+      "rmse_musd": 141.6585541059605,
+      "mape_over_1M": 1.2284612670823145
     }
   },
   "rating": {
@@ -209,130 +209,130 @@
       "lead_cast_name"
     ],
     "holdout_metrics": {
-      "r2": 0.3408812797831171,
-      "mae": 0.4529618729762171,
-      "rmse": 0.5763014749911206
+      "r2": 0.34029267390177853,
+      "mae": 0.4526276067802586,
+      "rmse": 0.5765078628684474
     },
     "cv_metrics": {
-      "r2": 0.3112959661438327,
-      "mae": 0.44693765090199244,
-      "rmse": 0.5694019058387372
+      "r2": 0.3121294524202751,
+      "mae": 0.4472974904207028,
+      "rmse": 0.5690662659716142
     },
     "baseline_ridge_holdout_metrics": {
-      "r2": 0.3380360312149723,
-      "mae": 0.4501726163585017,
-      "rmse": 0.5775440092572591
+      "r2": 0.3381007087943514,
+      "mae": 0.450162707358246,
+      "rmse": 0.5774648305414647
     },
     "permutation_importance": [
       {
         "feature": "runtime",
-        "importance_mean": 0.26267596425736406,
-        "importance_std": 0.012824010752717092
+        "importance_mean": 0.26506174873714283,
+        "importance_std": 0.01218989382257895
       },
       {
         "feature": "director_name",
-        "importance_mean": 0.0979511197531491,
-        "importance_std": 0.008458533573595915
+        "importance_mean": 0.09561042398056256,
+        "importance_std": 0.007954851647317095
       },
       {
         "feature": "budget_musd",
-        "importance_mean": 0.055507211772604426,
-        "importance_std": 0.007163487931928026
+        "importance_mean": 0.058061103349193566,
+        "importance_std": 0.005510950957466178
       },
       {
         "feature": "genre_Animation",
-        "importance_mean": 0.04382040462577441,
-        "importance_std": 0.004836944162554581
-      },
-      {
-        "feature": "lead_cast_name",
-        "importance_mean": 0.030093893132759876,
-        "importance_std": 0.005549959732746292
+        "importance_mean": 0.043306848048682366,
+        "importance_std": 0.006121105462587739
       },
       {
         "feature": "genre_Drama",
-        "importance_mean": 0.026774263345057992,
-        "importance_std": 0.006306537590604715
+        "importance_mean": 0.02859590471095317,
+        "importance_std": 0.0066270976034133785
+      },
+      {
+        "feature": "lead_cast_name",
+        "importance_mean": 0.026540462140486998,
+        "importance_std": 0.00652984809995162
       },
       {
         "feature": "genre_Horror",
-        "importance_mean": 0.010494658033422177,
-        "importance_std": 0.0036937775730905772
-      },
-      {
-        "feature": "genre_Comedy",
-        "importance_mean": 0.009232038344505011,
-        "importance_std": 0.0012913372732392952
-      },
-      {
-        "feature": "genre_Action",
-        "importance_mean": 0.008249711380142766,
-        "importance_std": 0.002824984415390355
-      },
-      {
-        "feature": "genre_Thriller",
-        "importance_mean": 0.0071076941593033235,
-        "importance_std": 0.002079614887882604
+        "importance_mean": 0.012357667511953307,
+        "importance_std": 0.004083492348494941
       },
       {
         "feature": "lead_production_company",
-        "importance_mean": 0.006442930708344874,
-        "importance_std": 0.0034934150675351686
+        "importance_mean": 0.010573299993427421,
+        "importance_std": 0.00324190764623886
+      },
+      {
+        "feature": "genre_Thriller",
+        "importance_mean": 0.008358799257387316,
+        "importance_std": 0.0022541100107595206
+      },
+      {
+        "feature": "genre_Action",
+        "importance_mean": 0.00830378502129676,
+        "importance_std": 0.0022234983998058256
+      },
+      {
+        "feature": "genre_Comedy",
+        "importance_mean": 0.006819812176018592,
+        "importance_std": 0.0012880265355389596
       },
       {
         "feature": "genre_Adventure",
-        "importance_mean": 0.004381161529099398,
-        "importance_std": 0.0020914977187021628
+        "importance_mean": 0.004139126192296993,
+        "importance_std": 0.002185447731764526
       },
       {
         "feature": "genre_Fantasy",
-        "importance_mean": 0.002203903468026391,
-        "importance_std": 0.0006611376477882022
+        "importance_mean": 0.00198231261658246,
+        "importance_std": 0.0005252217702119973
       },
       {
         "feature": "genre_Romance",
-        "importance_mean": 0.0016518939643785924,
-        "importance_std": 0.0007876017151300421
+        "importance_mean": 0.0017897249356681577,
+        "importance_std": 0.0010637103068773185
       },
       {
         "feature": "genre_Music",
-        "importance_mean": 0.001246508072835284,
-        "importance_std": 0.0003790871040040477
+        "importance_mean": 0.0012196134165000539,
+        "importance_std": 0.00034450748316884817
       },
       {
         "feature": "genre_Mystery",
-        "importance_mean": 0.0011981851007938581,
-        "importance_std": 0.0004703515357314204
-      },
-      {
-        "feature": "month_cos",
-        "importance_mean": 0.00029322475005761907,
-        "importance_std": 0.0014487042119950004
-      },
-      {
-        "feature": "genre_Family",
-        "importance_mean": 0.00027238326172069894,
-        "importance_std": 0.0007289788891881072
-      },
-      {
-        "feature": "genre_Crime",
-        "importance_mean": 0.0002279387131977506,
-        "importance_std": 0.0006195138571124502
+        "importance_mean": 0.000845051457392132,
+        "importance_std": 9.943504190418429e-05
       },
       {
         "feature": "genre_History",
-        "importance_mean": 0.00011334010168693177,
-        "importance_std": 0.0005575994402956662
+        "importance_mean": 0.00029947845671374207,
+        "importance_std": 0.000505611895343925
+      },
+      {
+        "feature": "genre_Crime",
+        "importance_mean": 0.00019807454369440424,
+        "importance_std": 0.0002833927615960661
+      },
+      {
+        "feature": "month_cos",
+        "importance_mean": 4.9286973333684256e-05,
+        "importance_std": 0.00036183364996284867
+      },
+      {
+        "feature": "genre_Family",
+        "importance_mean": -0.00015812773004517667,
+        "importance_std": 0.0009811450195137492
       },
       {
         "feature": "month_sin",
-        "importance_mean": -0.0024546013258026854,
-        "importance_std": 0.0031304752881764985
+        "importance_mean": -0.0006568803677360791,
+        "importance_std": 0.0028054834432473677
       },
       {
         "feature": "genre_Science Fiction",
-        "importance_mean": -0.0038149212868777483,
-        "importance_std": 0.0006985934273311488
+        "importance_mean": -0.0012829959128706214,
+        "importance_std": 0.00039809911023293277
       }
     ],
     "n_train": 4428,

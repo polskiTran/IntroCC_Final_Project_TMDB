@@ -8,8 +8,8 @@ Two **HistGradientBoostingRegressor** pipelines (revenue in M USD, user rating 0
 
 ## Run
 
-- **UTC time**: `2026-04-19T18:06:47+00:00`
-- **Gold data source**: `/Users/polski/Documents/GitHub/IntroCC_Final_Project_TMDB/data/gold/gold_movies.parquet`
+- **UTC time**: `2026-04-19T19:41:40+00:00`
+- **Gold data source**: `s3://tmdb-datalake-424865813912-us-east-2-an/gold/gold_movies.parquet`
 
 ## Artifacts
 
@@ -50,59 +50,59 @@ Two **HistGradientBoostingRegressor** pipelines (revenue in M USD, user rating 0
 
 | Split | R² | MAE | RMSE |
 | --- | --- | --- | --- |
-| Holdout (HGB) | 0.5876 | 0.8557 | 1.0801 |
-| 5-fold CV (HGB) | 0.5578 | 0.8502 | 1.0936 |
-| Holdout Ridge baseline | 0.4884 | 0.9679 | 1.2030 |
+| Holdout (HGB) | 0.5875 | 0.8565 | 1.0801 |
+| 5-fold CV (HGB) | 0.5595 | 0.8476 | 1.0917 |
+| Holdout Ridge baseline | 0.4884 | 0.9678 | 1.2029 |
 
 **Revenue (original units, M USD)**
 
 | Metric | Value |
 | --- | --- |
-| mae_musd | 69.7418 |
-| mape_over_1M | 1.2303 |
-| rmse_musd | 140.8505 |
+| mae_musd | 69.9128 |
+| mape_over_1M | 1.2285 |
+| rmse_musd | 141.6586 |
 
 **Permutation importance (top 12)**
 
 | Feature | Importance (mean) | Std |
 | --- | --- | --- |
-| budget_musd | 0.543334 | 0.036146 |
-| director_name | 0.051926 | 0.008397 |
-| lead_production_company | 0.051826 | 0.010463 |
-| lead_cast_name | 0.017151 | 0.005572 |
-| runtime | 0.015374 | 0.003002 |
-| genre_Drama | 0.011068 | 0.006231 |
-| month_sin | 0.005434 | 0.001868 |
-| genre_Romance | 0.005162 | 0.001235 |
-| genre_Adventure | 0.004189 | 0.000268 |
-| genre_Horror | 0.003422 | 0.001136 |
-| genre_Comedy | 0.003376 | 0.001600 |
-| genre_Thriller | 0.002927 | 0.001608 |
+| budget_musd | 0.543661 | 0.037807 |
+| lead_production_company | 0.054081 | 0.011239 |
+| director_name | 0.052715 | 0.008273 |
+| lead_cast_name | 0.019763 | 0.005655 |
+| runtime | 0.013001 | 0.004111 |
+| genre_Drama | 0.009159 | 0.005289 |
+| month_sin | 0.005299 | 0.001033 |
+| genre_Adventure | 0.004897 | 0.000380 |
+| genre_Romance | 0.004676 | 0.000775 |
+| genre_Horror | 0.003978 | 0.001213 |
+| genre_Comedy | 0.003328 | 0.001723 |
+| genre_Thriller | 0.003036 | 0.001614 |
 
 ### rating
 
 | Split | R² | MAE | RMSE |
 | --- | --- | --- | --- |
-| Holdout (HGB) | 0.3409 | 0.4530 | 0.5763 |
-| 5-fold CV (HGB) | 0.3113 | 0.4469 | 0.5694 |
-| Holdout Ridge baseline | 0.3380 | 0.4502 | 0.5775 |
+| Holdout (HGB) | 0.3403 | 0.4526 | 0.5765 |
+| 5-fold CV (HGB) | 0.3121 | 0.4473 | 0.5691 |
+| Holdout Ridge baseline | 0.3381 | 0.4502 | 0.5775 |
 
 **Permutation importance (top 12)**
 
 | Feature | Importance (mean) | Std |
 | --- | --- | --- |
-| runtime | 0.262676 | 0.012824 |
-| director_name | 0.097951 | 0.008459 |
-| budget_musd | 0.055507 | 0.007163 |
-| genre_Animation | 0.043820 | 0.004837 |
-| lead_cast_name | 0.030094 | 0.005550 |
-| genre_Drama | 0.026774 | 0.006307 |
-| genre_Horror | 0.010495 | 0.003694 |
-| genre_Comedy | 0.009232 | 0.001291 |
-| genre_Action | 0.008250 | 0.002825 |
-| genre_Thriller | 0.007108 | 0.002080 |
-| lead_production_company | 0.006443 | 0.003493 |
-| genre_Adventure | 0.004381 | 0.002091 |
+| runtime | 0.265062 | 0.012190 |
+| director_name | 0.095610 | 0.007955 |
+| budget_musd | 0.058061 | 0.005511 |
+| genre_Animation | 0.043307 | 0.006121 |
+| genre_Drama | 0.028596 | 0.006627 |
+| lead_cast_name | 0.026540 | 0.006530 |
+| genre_Horror | 0.012358 | 0.004083 |
+| lead_production_company | 0.010573 | 0.003242 |
+| genre_Thriller | 0.008359 | 0.002254 |
+| genre_Action | 0.008304 | 0.002223 |
+| genre_Comedy | 0.006820 | 0.001288 |
+| genre_Adventure | 0.004139 | 0.002185 |
 
 ## System / device
 

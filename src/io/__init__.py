@@ -5,6 +5,7 @@ from __future__ import annotations
 from src.io.store import (
     GOLD_FILENAME,
     SILVER_PARQUET_NAMES,
+    get_s3_client,
     gold_parquet_ref,
     polars_storage_options,
     s3_object_exists,
@@ -17,6 +18,7 @@ from src.io.store import (
 __all__ = [
     "GOLD_FILENAME",
     "SILVER_PARQUET_NAMES",
+    "get_s3_client",
     "gold_parquet_ref",
     "polars_storage_options",
     "s3_object_exists",

@@ -25,6 +25,16 @@ The ingestion pipeline has three stages, all idempotent:
 | Silver | typed Parquet: `movies`, `cast`, `crew`                      | `uv run python -m src.ingest silver`      |
 | Gold   | modeling-ready `gold_movies.parquet`                         | `uv run python -m src.ingest gold`        |
 | All    | Bronze then Silver then Gold                                 | `uv run python -m src.ingest all`         |
+| Upload | sync local `data/bronze`, `data/silver`, `data/gold` to S3   | `uv run python -m src.ingest upload-s3`   |
+
+Ingestion always writes to the local `data/` tree (fast, no per-object S3 I/O). After a full run, upload the medallion folders so deployed apps can read from the bucket with `DATA_BACKEND=s3`:
+
+```bash
+uv run python -m src.ingest all
+uv run python -m src.ingest upload-s3
+# or in one shot:
+uv run python -m src.ingest all --upload-s3
+```
 
 The ML module has its own entry point (runs after Gold is built):
 
@@ -35,7 +45,8 @@ The ML module has its own entry point (runs after Gold is built):
 
 Tunables are centralized in [src/config.py](src/config.py) and overridable via `.env` or process env. Common knobs:
 
-- `DATA_BACKEND` (`local` or `s3`, default `local`) — store Bronze/Silver/Gold under `data/` or in an S3 bucket. When `s3`, set `S3_BUCKET` (required), optional `S3_PREFIX`, and `AWS_REGION`; use standard AWS credentials (env vars, profile, or IAM role). The project depends on `awscrt` so boto3 can use AWS IAM Identity Center / SSO-style login providers when needed.
+- `DATA_BACKEND` (`local` or `s3`, default `local`) — where the Streamlit app and ML training **read** Bronze/Silver/Gold: local `data/` paths or `s3://` (requires `S3_BUCKET`, optional `S3_PREFIX`, `AWS_REGION`, and AWS credentials). Ingestion **always** writes to local `data/`; use `python -m src.ingest upload-s3` (or `all --upload-s3`) to copy those folders to the bucket. The project depends on `awscrt` so boto3 can use AWS IAM Identity Center / SSO-style login providers when needed.
+- `S3_UPLOAD_CONCURRENCY` (default `24`) — parallel uploads for the `upload-s3` stage.
 - `SAMPLE_COUNTS` (default `1000`) — hard cap on number of movies to pull.
 - `MIN_VOTE_COUNT` (default `10`) — TMDB `vote_count.gte` filter on discover.
 - `START_YEAR` (default `1980`).
@@ -77,7 +88,7 @@ models/                                     # ML artifacts (not under data/)
 
 ### S3 (`DATA_BACKEND=s3`)
 
-The same relative paths under `s3://<S3_BUCKET>/<S3_PREFIX>/` (omit prefix segments when `S3_PREFIX` is empty):
+Populate the bucket by running local ingest, then `upload-s3` (see the pipeline table above). Readers use the same relative paths under `s3://<S3_BUCKET>/<S3_PREFIX>/` (omit prefix segments when `S3_PREFIX` is empty):
 
 - `bronze/manifests/...`, `bronze/discover/...`, `bronze/movies/id_prefix=NNN/...`
 - `silver/*.parquet`
