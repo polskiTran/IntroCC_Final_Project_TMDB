@@ -17,12 +17,7 @@ from sklearn.pipeline import Pipeline
 
 from src.config import Settings, get_settings
 from src.ml.features import FeatureSpec, build_single_row
-
-
-_TARGET_FILES = {
-    "revenue": "model_revenue.joblib",
-    "rating": "model_rating.joblib",
-}
+from src.ml.paths import bundle_path as _bundle_path_for
 
 
 @dataclass
@@ -39,11 +34,7 @@ class LoadedBundle:
 
 def bundle_path(target: str, settings: Settings | None = None) -> Path:
     settings = settings or get_settings()
-    if target not in _TARGET_FILES:
-        raise ValueError(
-            f"Unknown target {target!r}; expected one of {list(_TARGET_FILES)}"
-        )
-    return settings.ml_dir / _TARGET_FILES[target]
+    return _bundle_path_for(target, settings)
 
 
 def bundle_exists(target: str, settings: Settings | None = None) -> bool:

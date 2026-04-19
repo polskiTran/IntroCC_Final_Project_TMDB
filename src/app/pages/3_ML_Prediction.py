@@ -21,7 +21,13 @@ import streamlit as st  # noqa: E402
 
 from src.app._data import gold_path, gold_path_exists, load_gold  # noqa: E402
 from src.config import get_settings  # noqa: E402
-from src.ml.predict import LoadedBundle, bundle_exists, load_bundle, predict_one  # noqa: E402
+from src.ml.predict import (  # noqa: E402
+    LoadedBundle,
+    bundle_exists,
+    bundle_path,
+    load_bundle,
+    predict_one,
+)
 
 
 st.set_page_config(page_title="ML prediction", layout="wide")
@@ -43,7 +49,7 @@ if not gold_path_exists(settings):
 
 if not (bundle_exists("revenue", settings) and bundle_exists("rating", settings)):
     st.error(
-        "Model bundles not found under `data/ml/`. Train them with "
+        "Model bundles not found under `models/`. Train them with "
         "`uv run python -m src.ml train` and reload this page."
     )
     st.stop()
@@ -55,7 +61,7 @@ def _load(target: str, _cache_key: str) -> LoadedBundle:
 
 
 def _cache_key(target: str) -> str:
-    path = settings.ml_dir / f"model_{target}.joblib"
+    path = bundle_path(target, settings)
     return f"{path}:{path.stat().st_mtime_ns if path.is_file() else 0}"
 
 

@@ -2,8 +2,8 @@
 
 Produces two self-contained bundles under ``settings.ml_dir``:
 
-- ``model_revenue.joblib``: predicts ``revenue_musd`` (trained on ``log1p``).
-- ``model_rating.joblib``: predicts ``vote_average`` in [0, 10].
+- ``revenue_model/model_revenue.joblib``: predicts ``revenue_musd`` (trained on ``log1p``).
+- ``rating_model/model_rating.joblib``: predicts ``vote_average`` in [0, 10].
 
 Each bundle carries the fitted ``sklearn`` Pipeline, the ``FeatureSpec`` (top
 genres), the target transform metadata, hold-out and 5-fold CV metrics, a Ridge
@@ -11,7 +11,8 @@ baseline, permutation importances, and a small held-out frame used to render
 the predicted-vs-actual scatter in the Streamlit page without retraining.
 
 The training run is idempotent: it fully rebuilds both bundles,
-``metrics.json``, and the repo-root ``model_card.md`` on every invocation.
+``metrics.json`` (under ``settings.ml_dir``), and the model card markdown at
+``settings.model_card_path`` on every invocation.
 """
 
 from __future__ import annotations
@@ -52,6 +53,11 @@ from src.ml.model_card import (
     render_model_card_markdown,
     utc_now_iso,
     write_model_card,
+)
+from src.ml.paths import (
+    metrics_json_path,
+    rating_bundle_path,
+    revenue_bundle_path,
 )
 
 logger = logging.getLogger(__name__)
@@ -326,7 +332,7 @@ def train(
     df: pl.DataFrame | None = None,
     settings: Settings | None = None,
 ) -> dict[str, ModelBundle]:
-    """Train both models, save bundles, metrics.json, and model_card.md."""
+    """Train both models, save bundles, metrics.json, and the model card markdown."""
     settings = settings or get_settings()
     system_info = collect_system_info()
     logger.info(
@@ -405,10 +411,12 @@ def train(
 
             assert revenue is not None and rating is not None
 
-            ml_dir = settings.ml_dir
-            ml_dir.mkdir(parents=True, exist_ok=True)
-            _dump_bundle(revenue, ml_dir / "model_revenue.joblib")
-            _dump_bundle(rating, ml_dir / "model_rating.joblib")
+            models_root = settings.ml_dir
+            models_root.mkdir(parents=True, exist_ok=True)
+            revenue_bundle_path(settings).parent.mkdir(parents=True, exist_ok=True)
+            rating_bundle_path(settings).parent.mkdir(parents=True, exist_ok=True)
+            _dump_bundle(revenue, revenue_bundle_path(settings))
+            _dump_bundle(rating, rating_bundle_path(settings))
             pbar.set_postfix_str("bundles saved")
             pbar.update(1)
 
@@ -416,7 +424,7 @@ def train(
                 "revenue": revenue.metadata(),
                 "rating": rating.metadata(),
             }
-            (ml_dir / "metrics.json").write_text(
+            metrics_json_path(settings).write_text(
                 json.dumps(metrics_summary, indent=2, default=float)
             )
             pbar.set_postfix_str("metrics.json")
@@ -435,9 +443,9 @@ def train(
             pbar.update(1)
 
     logger.info(
-        "saved models to %s (revenue holdout R2=%.3f, rating holdout R2=%.3f); "
+        "saved models under %s (revenue holdout R2=%.3f, rating holdout R2=%.3f); "
         "model card -> %s",
-        ml_dir,
+        settings.ml_dir,
         revenue.holdout_metrics.r2,
         rating.holdout_metrics.r2,
         settings.model_card_path,

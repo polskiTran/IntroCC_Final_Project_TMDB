@@ -1,0 +1,359 @@
+{
+  "revenue": {
+    "target": "revenue_musd",
+    "target_label": "Revenue (million USD)",
+    "target_transform": "log1p",
+    "feature_columns": [
+      "budget_musd",
+      "runtime",
+      "month_sin",
+      "month_cos",
+      "genre_Drama",
+      "genre_Comedy",
+      "genre_Thriller",
+      "genre_Action",
+      "genre_Adventure",
+      "genre_Romance",
+      "genre_Crime",
+      "genre_Horror",
+      "genre_Science Fiction",
+      "genre_Family",
+      "genre_Fantasy",
+      "genre_Mystery",
+      "genre_Animation",
+      "genre_History",
+      "genre_Music",
+      "director_name",
+      "lead_production_company",
+      "lead_cast_name"
+    ],
+    "holdout_metrics": {
+      "r2": 0.5875775597983219,
+      "mae": 0.8556617659896717,
+      "rmse": 1.0800763459791114
+    },
+    "cv_metrics": {
+      "r2": 0.5578165319408477,
+      "mae": 0.8501838336628736,
+      "rmse": 1.0936285334038522
+    },
+    "baseline_ridge_holdout_metrics": {
+      "r2": 0.48840051012574404,
+      "mae": 0.9678935863943746,
+      "rmse": 1.2029521774758263
+    },
+    "permutation_importance": [
+      {
+        "feature": "budget_musd",
+        "importance_mean": 0.5433341964786127,
+        "importance_std": 0.036146344733897245
+      },
+      {
+        "feature": "director_name",
+        "importance_mean": 0.05192644919925382,
+        "importance_std": 0.00839724392942495
+      },
+      {
+        "feature": "lead_production_company",
+        "importance_mean": 0.05182560205461253,
+        "importance_std": 0.010462827012115384
+      },
+      {
+        "feature": "lead_cast_name",
+        "importance_mean": 0.017151285369602753,
+        "importance_std": 0.005571659736303922
+      },
+      {
+        "feature": "runtime",
+        "importance_mean": 0.015373727363278666,
+        "importance_std": 0.0030017021433604977
+      },
+      {
+        "feature": "genre_Drama",
+        "importance_mean": 0.011068475256352328,
+        "importance_std": 0.0062313424767169966
+      },
+      {
+        "feature": "month_sin",
+        "importance_mean": 0.005433999787584298,
+        "importance_std": 0.0018677502189248297
+      },
+      {
+        "feature": "genre_Romance",
+        "importance_mean": 0.005162076682537697,
+        "importance_std": 0.0012347869690618404
+      },
+      {
+        "feature": "genre_Adventure",
+        "importance_mean": 0.0041885532324477115,
+        "importance_std": 0.00026829621508985663
+      },
+      {
+        "feature": "genre_Horror",
+        "importance_mean": 0.003422109596197509,
+        "importance_std": 0.0011362522583908017
+      },
+      {
+        "feature": "genre_Comedy",
+        "importance_mean": 0.003376272724443785,
+        "importance_std": 0.0016001918257910282
+      },
+      {
+        "feature": "genre_Thriller",
+        "importance_mean": 0.002926547394061352,
+        "importance_std": 0.0016076841582475352
+      },
+      {
+        "feature": "genre_Crime",
+        "importance_mean": 0.002520719496912416,
+        "importance_std": 0.00149682242073425
+      },
+      {
+        "feature": "genre_Science Fiction",
+        "importance_mean": 0.0022129677359903344,
+        "importance_std": 0.0007863307815125535
+      },
+      {
+        "feature": "genre_Fantasy",
+        "importance_mean": 0.0020054106581339328,
+        "importance_std": 0.0013760391643265323
+      },
+      {
+        "feature": "genre_Action",
+        "importance_mean": 0.0019645184965574546,
+        "importance_std": 0.001276040589078473
+      },
+      {
+        "feature": "genre_History",
+        "importance_mean": 0.0010818167013759705,
+        "importance_std": 0.0006176311058615667
+      },
+      {
+        "feature": "genre_Animation",
+        "importance_mean": 0.0009197474454517351,
+        "importance_std": 0.00036127131177151554
+      },
+      {
+        "feature": "genre_Family",
+        "importance_mean": 0.00025981503719563204,
+        "importance_std": 0.0010027662575366756
+      },
+      {
+        "feature": "genre_Music",
+        "importance_mean": -5.912508413850048e-05,
+        "importance_std": 0.0004531804701343739
+      },
+      {
+        "feature": "month_cos",
+        "importance_mean": -0.00011430187645227186,
+        "importance_std": 0.001415383471788338
+      },
+      {
+        "feature": "genre_Mystery",
+        "importance_mean": -0.00027136514830616854,
+        "importance_std": 0.000386464452835057
+      }
+    ],
+    "n_train": 4428,
+    "n_test": 1107,
+    "n_rows_total": 5535,
+    "top_genres": [
+      "Drama",
+      "Comedy",
+      "Thriller",
+      "Action",
+      "Adventure",
+      "Romance",
+      "Crime",
+      "Horror",
+      "Science Fiction",
+      "Family",
+      "Fantasy",
+      "Mystery",
+      "Animation",
+      "History",
+      "Music"
+    ],
+    "revenue_space_metrics": {
+      "mae_musd": 69.74181295833763,
+      "rmse_musd": 140.8504848635676,
+      "mape_over_1M": 1.2302882194432858
+    }
+  },
+  "rating": {
+    "target": "vote_average",
+    "target_label": "User rating (0-10)",
+    "target_transform": "identity",
+    "feature_columns": [
+      "budget_musd",
+      "runtime",
+      "month_sin",
+      "month_cos",
+      "genre_Drama",
+      "genre_Comedy",
+      "genre_Thriller",
+      "genre_Action",
+      "genre_Adventure",
+      "genre_Romance",
+      "genre_Crime",
+      "genre_Horror",
+      "genre_Science Fiction",
+      "genre_Family",
+      "genre_Fantasy",
+      "genre_Mystery",
+      "genre_Animation",
+      "genre_History",
+      "genre_Music",
+      "director_name",
+      "lead_production_company",
+      "lead_cast_name"
+    ],
+    "holdout_metrics": {
+      "r2": 0.3408812797831171,
+      "mae": 0.4529618729762171,
+      "rmse": 0.5763014749911206
+    },
+    "cv_metrics": {
+      "r2": 0.3112959661438327,
+      "mae": 0.44693765090199244,
+      "rmse": 0.5694019058387372
+    },
+    "baseline_ridge_holdout_metrics": {
+      "r2": 0.3380360312149723,
+      "mae": 0.4501726163585017,
+      "rmse": 0.5775440092572591
+    },
+    "permutation_importance": [
+      {
+        "feature": "runtime",
+        "importance_mean": 0.26267596425736406,
+        "importance_std": 0.012824010752717092
+      },
+      {
+        "feature": "director_name",
+        "importance_mean": 0.0979511197531491,
+        "importance_std": 0.008458533573595915
+      },
+      {
+        "feature": "budget_musd",
+        "importance_mean": 0.055507211772604426,
+        "importance_std": 0.007163487931928026
+      },
+      {
+        "feature": "genre_Animation",
+        "importance_mean": 0.04382040462577441,
+        "importance_std": 0.004836944162554581
+      },
+      {
+        "feature": "lead_cast_name",
+        "importance_mean": 0.030093893132759876,
+        "importance_std": 0.005549959732746292
+      },
+      {
+        "feature": "genre_Drama",
+        "importance_mean": 0.026774263345057992,
+        "importance_std": 0.006306537590604715
+      },
+      {
+        "feature": "genre_Horror",
+        "importance_mean": 0.010494658033422177,
+        "importance_std": 0.0036937775730905772
+      },
+      {
+        "feature": "genre_Comedy",
+        "importance_mean": 0.009232038344505011,
+        "importance_std": 0.0012913372732392952
+      },
+      {
+        "feature": "genre_Action",
+        "importance_mean": 0.008249711380142766,
+        "importance_std": 0.002824984415390355
+      },
+      {
+        "feature": "genre_Thriller",
+        "importance_mean": 0.0071076941593033235,
+        "importance_std": 0.002079614887882604
+      },
+      {
+        "feature": "lead_production_company",
+        "importance_mean": 0.006442930708344874,
+        "importance_std": 0.0034934150675351686
+      },
+      {
+        "feature": "genre_Adventure",
+        "importance_mean": 0.004381161529099398,
+        "importance_std": 0.0020914977187021628
+      },
+      {
+        "feature": "genre_Fantasy",
+        "importance_mean": 0.002203903468026391,
+        "importance_std": 0.0006611376477882022
+      },
+      {
+        "feature": "genre_Romance",
+        "importance_mean": 0.0016518939643785924,
+        "importance_std": 0.0007876017151300421
+      },
+      {
+        "feature": "genre_Music",
+        "importance_mean": 0.001246508072835284,
+        "importance_std": 0.0003790871040040477
+      },
+      {
+        "feature": "genre_Mystery",
+        "importance_mean": 0.0011981851007938581,
+        "importance_std": 0.0004703515357314204
+      },
+      {
+        "feature": "month_cos",
+        "importance_mean": 0.00029322475005761907,
+        "importance_std": 0.0014487042119950004
+      },
+      {
+        "feature": "genre_Family",
+        "importance_mean": 0.00027238326172069894,
+        "importance_std": 0.0007289788891881072
+      },
+      {
+        "feature": "genre_Crime",
+        "importance_mean": 0.0002279387131977506,
+        "importance_std": 0.0006195138571124502
+      },
+      {
+        "feature": "genre_History",
+        "importance_mean": 0.00011334010168693177,
+        "importance_std": 0.0005575994402956662
+      },
+      {
+        "feature": "month_sin",
+        "importance_mean": -0.0024546013258026854,
+        "importance_std": 0.0031304752881764985
+      },
+      {
+        "feature": "genre_Science Fiction",
+        "importance_mean": -0.0038149212868777483,
+        "importance_std": 0.0006985934273311488
+      }
+    ],
+    "n_train": 4428,
+    "n_test": 1107,
+    "n_rows_total": 5535,
+    "top_genres": [
+      "Drama",
+      "Comedy",
+      "Thriller",
+      "Action",
+      "Adventure",
+      "Romance",
+      "Crime",
+      "Horror",
+      "Science Fiction",
+      "Family",
+      "Fantasy",
+      "Mystery",
+      "Animation",
+      "History",
+      "Music"
+    ]
+  }
+}

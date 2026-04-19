@@ -30,7 +30,7 @@ The ML module has its own entry point (runs after Gold is built):
 
 | Step  | Output                                  | Command                             |
 | ----- | --------------------------------------- | ----------------------------------- |
-| Train | `data/ml/model_{revenue,rating}.joblib` | `uv run python -m src.ml train`     |
+| Train | `models/revenue_model/model_revenue.joblib`, `models/rating_model/model_rating.joblib`, `models/metrics.json`, `models/model_card.md` | `uv run python -m src.ml train`     |
 | Probe | stdout revenue + rating prediction      | `uv run python -m src.ml predict …` |
 
 Tunables are centralized in [src/config.py](src/config.py) and overridable via `.env` or process env. Common knobs:
@@ -63,10 +63,13 @@ data/
     crew.parquet                            # long, filtered to Director and Producer
   gold/
     gold_movies.parquet                     # wide, budget>=100k and revenue>0, month grain
-  ml/
+models/                                     # ML artifacts (not under data/)
+  revenue_model/
     model_revenue.joblib                    # HGB pipeline + fit-time feature spec
+  rating_model/
     model_rating.joblib                     # HGB pipeline + fit-time feature spec
-    metrics.json                            # holdout, 5-fold CV, Ridge baseline, importances
+  metrics.json                              # holdout, 5-fold CV, Ridge baseline, importances (both targets)
+  model_card.md                             # human-readable card (overwritten each train run)
 ```
 
 The Gold table is the modeling-ready dataset for the Streamlit analytics and ML pages. It joins lead director and lead cast onto the Silver movies and adds `budget_musd`, `revenue_musd`, `roi`, and `lead_production_company`.
@@ -121,11 +124,11 @@ weighting.
 regression with the same feature pipeline is reported as a sanity baseline.
 Permutation importances (scoring = R²) are computed on the hold-out split.
 
-**Artifacts.** Each bundle (`data/ml/model_*.joblib`) carries the fitted
-pipeline, the feature spec (top genres), all reported metrics, permutation
-importances, and the hold-out predictions used by the Streamlit scatter plot
-so the app never has to retrain. A combined `metrics.json` is written alongside
-for easy inspection.
+**Artifacts.** Each bundle under `models/revenue_model/` and `models/rating_model/`
+carries the fitted pipeline, the feature spec (top genres), all reported metrics,
+permutation importances, and the hold-out predictions used by the Streamlit scatter
+plot so the app never has to retrain. A combined `models/metrics.json` is written
+at the models root for easy inspection.
 
 ## Tests & checks
 

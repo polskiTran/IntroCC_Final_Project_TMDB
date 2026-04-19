@@ -1,4 +1,4 @@
-"""Generate repo-root ``model_card.md`` after ML training runs.
+"""Generate ``model_card.md`` (see ``settings.model_card_path``) after ML training runs.
 
 Collects best-effort system/device info (CPU, RAM, optional NVIDIA GPU via
 ``nvidia-smi``) and renders evaluation metadata from ``metrics_summary``.
@@ -16,6 +16,11 @@ from pathlib import Path
 from typing import Any
 
 from src.config import Settings
+from src.ml.paths import (
+    metrics_json_path,
+    rating_bundle_path,
+    revenue_bundle_path,
+)
 
 
 def collect_system_info() -> dict[str, Any]:
@@ -155,7 +160,7 @@ def render_model_card_markdown(
         "",
         "Two **HistGradientBoostingRegressor** pipelines (revenue in M USD, user rating 0–10) "
         "with the same tabular features as described in the project README. "
-        "See `data/ml/metrics.json` for machine-readable metrics.",
+        f"See `{metrics_json_path(settings).as_posix()}` for machine-readable metrics.",
         "",
         "## Run",
         "",
@@ -164,10 +169,10 @@ def render_model_card_markdown(
         "",
         "## Artifacts",
         "",
-        f"- **ML directory**: `{settings.ml_dir.resolve()}`",
-        f"- **Metrics JSON**: `{settings.ml_dir.resolve() / 'metrics.json'}`",
-        f"- **Revenue bundle**: `{settings.ml_dir.resolve() / 'model_revenue.joblib'}`",
-        f"- **Rating bundle**: `{settings.ml_dir.resolve() / 'model_rating.joblib'}`",
+        f"- **Models root**: `{settings.ml_dir.resolve()}`",
+        f"- **Metrics JSON**: `{metrics_json_path(settings).resolve()}`",
+        f"- **Revenue bundle**: `{revenue_bundle_path(settings).resolve()}`",
+        f"- **Rating bundle**: `{rating_bundle_path(settings).resolve()}`",
         "",
         "## Reproducibility",
         "",

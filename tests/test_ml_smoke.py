@@ -17,6 +17,7 @@ import pytest
 from src.config import Settings
 from src.ml import predict as predict_mod
 from src.ml import train as train_mod
+from src.ml.paths import metrics_json_path, rating_bundle_path, revenue_bundle_path
 from src.ml.features import (
     TARGET_ENCODED_COLS,
     build_feature_frame,
@@ -136,21 +137,20 @@ def test_build_single_row_round_trip() -> None:
 
 def test_train_and_predict_end_to_end(tmp_path: Path) -> None:
     settings = Settings(
-        ml_dir=tmp_path / "ml",
+        ml_dir=tmp_path / "models",
         gold_dir=tmp_path / "gold",
         silver_dir=tmp_path / "silver",
         bronze_dir=tmp_path / "bronze",
-        model_card_path=tmp_path / "model_card.md",
+        model_card_path=tmp_path / "models" / "model_card.md",
     )
     df = _synth_gold(80)
     bundles = train_mod.train(df=df, settings=settings)
     assert set(bundles) == {"revenue", "rating"}
 
-    for target in ("revenue", "rating"):
-        path = settings.ml_dir / f"model_{target}.joblib"
-        assert path.is_file(), f"missing bundle for {target}"
+    assert revenue_bundle_path(settings).is_file(), "missing revenue bundle"
+    assert rating_bundle_path(settings).is_file(), "missing rating bundle"
 
-    metrics_file = settings.ml_dir / "metrics.json"
+    metrics_file = metrics_json_path(settings)
     assert metrics_file.is_file()
 
     card = settings.model_card_path.read_text(encoding="utf-8")
