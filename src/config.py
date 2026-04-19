@@ -8,8 +8,9 @@ from __future__ import annotations
 
 from functools import lru_cache
 from pathlib import Path
+from typing import Literal
 
-from pydantic import Field
+from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -43,6 +44,18 @@ class Settings(BaseSettings):
     gold_dir: Path = _PROJECT_ROOT / "data" / "gold"
     ml_dir: Path = _PROJECT_ROOT / "models"
     model_card_path: Path = _PROJECT_ROOT / "models" / "model_card.md"
+
+    data_backend: Literal["local", "s3"] = "local"
+    aws_region: str = "us-east-1"
+    s3_bucket: str = ""
+    s3_prefix: str = ""
+
+    @model_validator(mode="after")
+    def _require_s3_bucket_when_remote(self) -> Settings:
+        if self.data_backend == "s3" and not str(self.s3_bucket).strip():
+            msg = "s3_bucket is required when data_backend is 's3'"
+            raise ValueError(msg)
+        return self
 
     @property
     def discover_dir(self) -> Path:

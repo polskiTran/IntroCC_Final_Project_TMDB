@@ -14,8 +14,16 @@ import logging
 import polars as pl
 
 from src.config import Settings, get_settings
+from src.io.store import gold_parquet_ref, silver_parquet_ref
 
 logger = logging.getLogger(__name__)
+
+
+def _read_silver_parquet(settings: Settings, name: str) -> pl.DataFrame:
+    path, opts = silver_parquet_ref(settings, name)
+    if opts is None:
+        return pl.read_parquet(path)
+    return pl.read_parquet(str(path), storage_options=opts)
 
 
 _GOLD_COLUMNS = [
@@ -43,8 +51,8 @@ _GOLD_COLUMNS = [
 ]
 
 
-def _load_director(silver_dir) -> pl.DataFrame:  # type: ignore[no-untyped-def]
-    crew = pl.read_parquet(silver_dir / "crew.parquet")
+def _load_director(settings: Settings) -> pl.DataFrame:
+    crew = _read_silver_parquet(settings, "crew.parquet")
     return (
         crew.filter(pl.col("job") == "Director")
         .group_by("movie_id")
@@ -55,8 +63,8 @@ def _load_director(silver_dir) -> pl.DataFrame:  # type: ignore[no-untyped-def]
     )
 
 
-def _load_lead_cast(silver_dir) -> pl.DataFrame:  # type: ignore[no-untyped-def]
-    cast = pl.read_parquet(silver_dir / "cast.parquet")
+def _load_lead_cast(settings: Settings) -> pl.DataFrame:
+    cast = _read_silver_parquet(settings, "cast.parquet")
     return (
         cast.sort("order")
         .group_by("movie_id")
@@ -69,13 +77,12 @@ def _load_lead_cast(silver_dir) -> pl.DataFrame:  # type: ignore[no-untyped-def]
 
 def build(settings: Settings | None = None) -> dict[str, int]:
     settings = settings or get_settings()
-    silver_dir = settings.silver_dir
-    gold_dir = settings.gold_dir
-    gold_dir.mkdir(parents=True, exist_ok=True)
+    if settings.data_backend != "s3":
+        settings.gold_dir.mkdir(parents=True, exist_ok=True)
 
-    movies = pl.read_parquet(silver_dir / "movies.parquet")
-    director = _load_director(silver_dir)
-    lead_cast = _load_lead_cast(silver_dir)
+    movies = _read_silver_parquet(settings, "movies.parquet")
+    director = _load_director(settings)
+    lead_cast = _load_lead_cast(settings)
 
     joined = (
         movies.rename({"id": "movie_id"})
@@ -95,7 +102,11 @@ def build(settings: Settings | None = None) -> dict[str, int]:
     )
 
     gold = enriched.select(_GOLD_COLUMNS)
-    gold.write_parquet(gold_dir / "gold_movies.parquet")
+    gpath, gopts = gold_parquet_ref(settings)
+    if gopts is None:
+        gold.write_parquet(gpath)
+    else:
+        gold.write_parquet(str(gpath), storage_options=gopts)
 
     counts = {
         "silver_movies": movies.height,

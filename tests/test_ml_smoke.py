@@ -137,6 +137,7 @@ def test_build_single_row_round_trip() -> None:
 
 def test_train_and_predict_end_to_end(tmp_path: Path) -> None:
     settings = Settings(
+        data_backend="local",
         ml_dir=tmp_path / "models",
         gold_dir=tmp_path / "gold",
         silver_dir=tmp_path / "silver",

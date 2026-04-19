@@ -15,10 +15,17 @@ import polars as pl
 import streamlit as st
 
 from src.config import Settings, get_settings
+from src.io.store import (
+    GOLD_FILENAME,
+    SILVER_PARQUET_NAMES,
+    gold_parquet_ref,
+    polars_storage_options,
+    s3_object_exists,
+    s3_prefix_metrics,
+    s3_uri,
+)
 
-
-GOLD_FILENAME = "gold_movies.parquet"
-SILVER_FILES = ("movies.parquet", "cast.parquet", "crew.parquet")
+SILVER_FILES = SILVER_PARQUET_NAMES
 
 
 @dataclass(frozen=True)
@@ -31,13 +38,19 @@ class LayerInfo:
     last_updated: datetime | None
 
 
-def gold_path(settings: Settings | None = None) -> Path:
+def gold_path(settings: Settings | None = None) -> Path | str:
     settings = settings or get_settings()
-    return settings.gold_dir / GOLD_FILENAME
+    if settings.data_backend != "s3":
+        return settings.gold_dir / GOLD_FILENAME
+    return s3_uri(settings, "gold", GOLD_FILENAME)
 
 
 def gold_path_exists(settings: Settings | None = None) -> bool:
-    return gold_path(settings).is_file()
+    settings = settings or get_settings()
+    ref, opts = gold_parquet_ref(settings)
+    if opts is None:
+        return Path(ref).is_file()
+    return s3_object_exists(settings, "gold", GOLD_FILENAME)
 
 
 @st.cache_data(show_spinner=False)
@@ -47,10 +60,27 @@ def load_gold(path_str: str | None = None) -> pl.DataFrame:
     `path_str` is the cache key; pass `str(gold_path())` from the caller so
     the cache invalidates when the file is replaced.
     """
-    path = Path(path_str) if path_str else gold_path()
-    if not path.is_file():
+    if path_str is not None and not path_str.startswith("s3://"):
+        p = Path(path_str)
+        if not p.is_file():
+            return pl.DataFrame()
+        return pl.read_parquet(p)
+
+    settings = get_settings()
+    ref, opts = gold_parquet_ref(settings)
+    key = path_str if path_str is not None else str(ref)
+    if opts is None:
+        p = Path(key)
+        if not p.is_file():
+            return pl.DataFrame()
+        return pl.read_parquet(p)
+    if not s3_object_exists(settings, "gold", GOLD_FILENAME):
         return pl.DataFrame()
-    return pl.read_parquet(path)
+    so = polars_storage_options(settings) or {}
+    try:
+        return pl.read_parquet(key, storage_options=so)
+    except Exception:
+        return pl.DataFrame()
 
 
 def _dir_stats(paths: list[Path]) -> tuple[int, int, datetime | None]:
@@ -88,8 +118,82 @@ def _bronze_json_count(path: Path) -> int | None:
     return sum(1 for _ in path.rglob("*.json.gz"))
 
 
+def _parquet_rows_s3(settings: Settings, *uri_parts: str) -> int | None:
+    if not s3_object_exists(settings, *uri_parts):
+        return None
+    uri = s3_uri(settings, *uri_parts)
+    so = polars_storage_options(settings) or {}
+    try:
+        df = pl.scan_parquet(uri, storage_options=so).select(pl.len()).collect()
+        if isinstance(df, pl.DataFrame):
+            return int(df.item())
+        return None
+    except Exception:
+        return None
+
+
+def _layer_metadata_s3(settings: Settings) -> list[LayerInfo]:
+    out: list[LayerInfo] = []
+
+    d_files, d_size, d_last = s3_prefix_metrics(settings, "bronze", "discover")
+    out.append(
+        LayerInfo(
+            layer="Bronze / discover",
+            path=s3_uri(settings, "bronze", "discover"),
+            files=d_files,
+            size_mb=round(d_size, 3),
+            rows=None,
+            last_updated=d_last,
+        )
+    )
+
+    m_files, m_size, m_last = s3_prefix_metrics(settings, "bronze", "movies")
+    out.append(
+        LayerInfo(
+            layer="Bronze / movies",
+            path=s3_uri(settings, "bronze", "movies"),
+            files=m_files,
+            size_mb=round(m_size, 3),
+            rows=m_files,
+            last_updated=m_last,
+        )
+    )
+
+    for name in SILVER_FILES:
+        stem = name.removesuffix(".parquet")
+        s_files, s_size, s_last = s3_prefix_metrics(settings, "silver", name)
+        fcount = 1 if s_files > 0 else 0
+        out.append(
+            LayerInfo(
+                layer=f"Silver / {stem}",
+                path=s3_uri(settings, "silver", name),
+                files=fcount,
+                size_mb=round(s_size, 3),
+                rows=_parquet_rows_s3(settings, "silver", name),
+                last_updated=s_last,
+            )
+        )
+
+    g_files, g_size, g_last = s3_prefix_metrics(settings, "gold", GOLD_FILENAME)
+    gfcount = 1 if g_files > 0 else 0
+    out.append(
+        LayerInfo(
+            layer="Gold / gold_movies",
+            path=s3_uri(settings, "gold", GOLD_FILENAME),
+            files=gfcount,
+            size_mb=round(g_size, 3),
+            rows=_parquet_rows_s3(settings, "gold", GOLD_FILENAME),
+            last_updated=g_last,
+        )
+    )
+
+    return out
+
+
 def layer_metadata(settings: Settings | None = None) -> list[LayerInfo]:
     settings = settings or get_settings()
+    if settings.data_backend == "s3":
+        return _layer_metadata_s3(settings)
 
     out: list[LayerInfo] = []
 
@@ -139,7 +243,7 @@ def layer_metadata(settings: Settings | None = None) -> list[LayerInfo]:
             )
         )
 
-    gp = gold_path(settings)
+    gp = settings.gold_dir / GOLD_FILENAME
     files, size, last = _dir_stats([gp])
     out.append(
         LayerInfo(

@@ -67,6 +67,7 @@ def _movie_fixture(
 @pytest.fixture
 def tmp_settings(tmp_path: Path) -> Settings:
     return Settings(
+        data_backend="local",
         tmdb_api_key="test",
         tmdb_bearer_token=None,
         bronze_dir=tmp_path / "bronze",

@@ -60,6 +60,7 @@ def _movie_fixture(movie_id: int) -> dict[str, Any]:
 @pytest.fixture
 def tmp_settings(tmp_path: Path) -> Settings:
     return Settings(
+        data_backend="local",
         tmdb_api_key="test",
         tmdb_bearer_token=None,
         bronze_dir=tmp_path / "bronze",
@@ -85,7 +86,9 @@ def test_gold_path_exists_flips_after_build(tmp_settings: Settings) -> None:
     gold.build(tmp_settings)
 
     assert gold_path_exists(tmp_settings) is True
-    assert gold_path(tmp_settings).is_file()
+    gp = gold_path(tmp_settings)
+    assert isinstance(gp, Path)
+    assert gp.is_file()
 
 
 def test_load_gold_returns_rows_after_build(tmp_settings: Settings) -> None:

@@ -5,6 +5,8 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
+    "awscrt>=0.32.1",
+    "boto3>=1.42.84",
     "httpx>=0.28.1",
     "joblib>=1.5.3",
     "polars>=1.39.3",
@@ -19,6 +21,7 @@ dependencies = [
 
 [dependency-groups]
 dev = [
+    "moto[s3]>=5.1.22",
     "pytest>=9.0.3",
     "ruff>=0.15.11",
     "ty>=0.0.31",

@@ -6,6 +6,8 @@ Usage:
 
 If ``--title`` matches more than one bronze file, the command exits with an
 error listing IDs (use ``--movie-id``).
+
+Requires ``DATA_BACKEND=local`` (filesystem paths only; S3 is not supported here).
 """
 
 from __future__ import annotations

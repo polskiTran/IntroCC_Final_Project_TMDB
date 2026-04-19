@@ -25,8 +25,13 @@ from tqdm.contrib.logging import tqdm_logging_redirect
 from tqdm.std import tqdm as std_tqdm
 
 from src.config import Settings, get_settings
-from src.ingest.storage import bronze_movie_path, write_json_gz
+from src.ingest.storage import (
+    bronze_movie_exists,
+    write_bronze_movie_json,
+    write_json_gz,
+)
 from src.ingest.tmdb_client import TMDBClient
+from src.io.store import write_gzipped_json_s3, write_text_s3
 
 logger = logging.getLogger(__name__)
 
@@ -61,11 +66,22 @@ def _manifest_path(settings: Settings) -> Path:
     )
 
 
-def _write_manifest(path: Path, payload: dict[str, Any]) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_suffix(".tmp")
-    tmp.write_text(json.dumps(payload, indent=2), encoding="utf-8")
-    tmp.replace(path)
+def _write_manifest(settings: Settings, payload: dict[str, Any]) -> None:
+    if settings.data_backend != "s3":
+        path = _manifest_path(settings)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        tmp = path.with_suffix(".tmp")
+        tmp.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+        tmp.replace(path)
+        return
+    write_text_s3(
+        settings,
+        "bronze",
+        "manifests",
+        f"run_date={date.today().isoformat()}",
+        "run_manifest.json",
+        text=json.dumps(payload, indent=2),
+    )
 
 
 @dataclass
@@ -79,16 +95,15 @@ class _DetailStats:
 async def _fetch_one(
     client: TMDBClient,
     movie_id: int,
-    movies_root: Path,
+    settings: Settings,
     stats: _DetailStats,
 ) -> None:
-    out_path = bronze_movie_path(movies_root, movie_id)
-    if out_path.exists():
+    if bronze_movie_exists(settings, movie_id):
         stats.skipped += 1
         return
     try:
         payload = await client.movie_details(movie_id, append="credits")
-        write_json_gz(out_path, payload)
+        await asyncio.to_thread(write_bronze_movie_json, settings, movie_id, payload)
         stats.fetched += 1
     except Exception as exc:  # noqa: BLE001 — record and continue
         stats.failed += 1
@@ -101,7 +116,7 @@ async def _detail_worker(
     worker_id: int,
     client: TMDBClient,
     queue: asyncio.Queue[int | _StopSentinel],
-    movies_root: Path,
+    settings: Settings,
     stats: _DetailStats,
     pbar: std_tqdm,
 ) -> None:
@@ -112,7 +127,7 @@ async def _detail_worker(
             if isinstance(item, _StopSentinel):
                 return
             assert isinstance(item, int)
-            await _fetch_one(client, item, movies_root, stats)
+            await _fetch_one(client, item, settings, stats)
             pbar.update(1)
         finally:
             queue.task_done()
@@ -145,8 +160,19 @@ async def _discover_producer(
 
     first = await fetch_page(1)
     if settings.save_discover_pages:
-        run_dir.mkdir(parents=True, exist_ok=True)
-        write_json_gz(run_dir / "page_0001.json.gz", first)
+        if settings.data_backend != "s3":
+            run_dir.mkdir(parents=True, exist_ok=True)
+            write_json_gz(run_dir / "page_0001.json.gz", first)
+        else:
+            await asyncio.to_thread(
+                write_gzipped_json_s3,
+                settings,
+                "bronze",
+                "discover",
+                date.today().isoformat(),
+                "page_0001.json.gz",
+                payload=first,
+            )
 
     await ingest_results(first)
 
@@ -169,8 +195,19 @@ async def _discover_producer(
             if len(seen) >= settings.sample_counts:
                 break
             if settings.save_discover_pages:
-                run_dir.mkdir(parents=True, exist_ok=True)
-                write_json_gz(run_dir / f"page_{p:04d}.json.gz", payload)
+                if settings.data_backend != "s3":
+                    run_dir.mkdir(parents=True, exist_ok=True)
+                    write_json_gz(run_dir / f"page_{p:04d}.json.gz", payload)
+                else:
+                    await asyncio.to_thread(
+                        write_gzipped_json_s3,
+                        settings,
+                        "bronze",
+                        "discover",
+                        date.today().isoformat(),
+                        f"page_{p:04d}.json.gz",
+                        payload=payload,
+                    )
             await ingest_results(payload)
 
         page = batch_end + 1
@@ -219,8 +256,8 @@ async def _run_bronze_with_client(
     settings: Settings,
     client: Any,
 ) -> dict[str, Any]:
-    movies_root = settings.movies_bronze_dir
-    movies_root.mkdir(parents=True, exist_ok=True)
+    if settings.data_backend != "s3":
+        settings.movies_bronze_dir.mkdir(parents=True, exist_ok=True)
 
     discovered_ids: list[int] = []
     stats = _DetailStats()
@@ -241,9 +278,7 @@ async def _run_bronze_with_client(
             mininterval=0.25,
         ) as pbar:
             producer_task = asyncio.create_task(
-                _discover_producer(
-                    client, settings, queue, discovered_ids, num_workers
-                )
+                _discover_producer(client, settings, queue, discovered_ids, num_workers)
             )
 
             workers = [
@@ -252,7 +287,7 @@ async def _run_bronze_with_client(
                         i,
                         client,
                         queue,
-                        movies_root,
+                        settings,
                         stats,
                         pbar,
                     )
@@ -275,7 +310,7 @@ async def _run_bronze_with_client(
         },
         "save_discover_pages": settings.save_discover_pages,
     }
-    _write_manifest(_manifest_path(settings), manifest)
+    _write_manifest(settings, manifest)
     logger.info(
         "bronze complete: discovered=%d fetched=%d skipped=%d failed=%d",
         len(discovered_ids),

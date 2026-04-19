@@ -35,6 +35,7 @@ The ML module has its own entry point (runs after Gold is built):
 
 Tunables are centralized in [src/config.py](src/config.py) and overridable via `.env` or process env. Common knobs:
 
+- `DATA_BACKEND` (`local` or `s3`, default `local`) — store Bronze/Silver/Gold under `data/` or in an S3 bucket. When `s3`, set `S3_BUCKET` (required), optional `S3_PREFIX`, and `AWS_REGION`; use standard AWS credentials (env vars, profile, or IAM role). The project depends on `awscrt` so boto3 can use AWS IAM Identity Center / SSO-style login providers when needed.
 - `SAMPLE_COUNTS` (default `1000`) — hard cap on number of movies to pull.
 - `MIN_VOTE_COUNT` (default `10`) — TMDB `vote_count.gte` filter on discover.
 - `START_YEAR` (default `1980`).
@@ -50,6 +51,8 @@ SAMPLE_COUNTS=50 uv run python -m src.ingest all
 ```
 
 ## Data layout
+
+### Local (`DATA_BACKEND=local`, default)
 
 ```
 data/
@@ -71,6 +74,16 @@ models/                                     # ML artifacts (not under data/)
   metrics.json                              # holdout, 5-fold CV, Ridge baseline, importances (both targets)
   model_card.md                             # human-readable card (overwritten each train run)
 ```
+
+### S3 (`DATA_BACKEND=s3`)
+
+The same relative paths under `s3://<S3_BUCKET>/<S3_PREFIX>/` (omit prefix segments when `S3_PREFIX` is empty):
+
+- `bronze/manifests/...`, `bronze/discover/...`, `bronze/movies/id_prefix=NNN/...`
+- `silver/*.parquet`
+- `gold/gold_movies.parquet`
+
+Trained models and metrics remain on disk under `models/` (not uploaded to S3).
 
 The Gold table is the modeling-ready dataset for the Streamlit analytics and ML pages. It joins lead director and lead cast onto the Silver movies and adds `budget_musd`, `revenue_musd`, `roi`, and `lead_production_company`.
 

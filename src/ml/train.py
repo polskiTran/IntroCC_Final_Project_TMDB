@@ -39,6 +39,7 @@ from tqdm import tqdm
 from tqdm.contrib.logging import logging_redirect_tqdm
 
 from src.config import Settings, get_settings
+from src.io.store import GOLD_FILENAME, gold_parquet_ref, s3_object_exists
 from src.ml.features import (
     NUMERIC_COLS,
     CYCLICAL_COLS,
@@ -368,14 +369,24 @@ def train(
         ) as pbar:
             # --- stage 1: Gold ---
             if df is None:
-                gold_file = settings.gold_dir / "gold_movies.parquet"
-                if not gold_file.is_file():
-                    raise FileNotFoundError(
-                        f"Gold parquet not found at {gold_file}. "
-                        "Run `uv run python -m src.ingest all` first."
-                    )
-                df_in = pl.read_parquet(gold_file)
-                gold_source = str(gold_file.resolve())
+                gpath, gopts = gold_parquet_ref(settings)
+                if gopts is None:
+                    gold_file = Path(gpath)
+                    if not gold_file.is_file():
+                        raise FileNotFoundError(
+                            f"Gold parquet not found at {gold_file}. "
+                            "Run `uv run python -m src.ingest all` first."
+                        )
+                    df_in = pl.read_parquet(gold_file)
+                    gold_source = str(gold_file.resolve())
+                else:
+                    if not s3_object_exists(settings, "gold", GOLD_FILENAME):
+                        raise FileNotFoundError(
+                            f"Gold parquet not found at {gpath}. "
+                            "Run `uv run python -m src.ingest all` first."
+                        )
+                    df_in = pl.read_parquet(str(gpath), storage_options=gopts)
+                    gold_source = str(gpath)
             else:
                 df_in = df
                 gold_source = "in-memory DataFrame"
