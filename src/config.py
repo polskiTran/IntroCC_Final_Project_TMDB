@@ -40,6 +40,7 @@ class Settings(BaseSettings):
     silver_dir: Path = _PROJECT_ROOT / "data" / "silver"
     gold_dir: Path = _PROJECT_ROOT / "data" / "gold"
     ml_dir: Path = _PROJECT_ROOT / "data" / "ml"
+    model_card_path: Path = _PROJECT_ROOT / "model_card.md"
 
     @property
     def discover_dir(self) -> Path:

@@ -10,8 +10,8 @@ genres), the target transform metadata, hold-out and 5-fold CV metrics, a Ridge
 baseline, permutation importances, and a small held-out frame used to render
 the predicted-vs-actual scatter in the Streamlit page without retraining.
 
-The training run is idempotent: it fully rebuilds both bundles and
-``metrics.json`` on every invocation.
+The training run is idempotent: it fully rebuilds both bundles,
+``metrics.json``, and the repo-root ``model_card.md`` on every invocation.
 """
 
 from __future__ import annotations
@@ -34,6 +34,8 @@ from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
 from sklearn.model_selection import KFold, cross_val_score, train_test_split
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler, TargetEncoder
+from tqdm import tqdm
+from tqdm.contrib.logging import logging_redirect_tqdm
 
 from src.config import Settings, get_settings
 from src.ml.features import (
@@ -43,6 +45,13 @@ from src.ml.features import (
     FeatureSpec,
     build_feature_frame,
     fit_feature_spec,
+)
+from src.ml.model_card import (
+    collect_system_info,
+    format_system_info_for_log,
+    render_model_card_markdown,
+    utc_now_iso,
+    write_model_card,
 )
 
 logger = logging.getLogger(__name__)
@@ -317,55 +326,121 @@ def train(
     df: pl.DataFrame | None = None,
     settings: Settings | None = None,
 ) -> dict[str, ModelBundle]:
-    """Train both models, save bundles and metrics.json. Returns the bundles."""
+    """Train both models, save bundles, metrics.json, and model_card.md."""
     settings = settings or get_settings()
-    if df is None:
-        gold_file = settings.gold_dir / "gold_movies.parquet"
-        if not gold_file.is_file():
-            raise FileNotFoundError(
-                f"Gold parquet not found at {gold_file}. "
-                "Run `uv run python -m src.ingest all` first."
-            )
-        df = pl.read_parquet(gold_file)
-    if df.height == 0:
-        raise RuntimeError(
-            "Gold table is empty. Run `uv run python -m src.ingest all` first."
-        )
-
-    logger.info("training revenue model on %d rows", df.height)
-    revenue = _train_single(
-        df,
-        target_col="revenue_musd",
-        target_label="Revenue (million USD)",
-        target_transform="log1p",
+    system_info = collect_system_info()
+    logger.info(
+        "Training environment (CPU/GPU/device):\n%s",
+        format_system_info_for_log(system_info),
     )
-    logger.info("training rating model on %d rows", df.height)
-    rating = _train_single(
-        df,
-        target_col="vote_average",
-        target_label="User rating (0-10)",
-        target_transform="identity",
-        sample_weight_col="vote_count",
-    )
+    run_started_at = utc_now_iso()
 
-    ml_dir = settings.ml_dir
-    ml_dir.mkdir(parents=True, exist_ok=True)
-    _dump_bundle(revenue, ml_dir / "model_revenue.joblib")
-    _dump_bundle(rating, ml_dir / "model_rating.joblib")
-
-    metrics_summary = {
-        "revenue": revenue.metadata(),
-        "rating": rating.metadata(),
+    reproducibility = {
+        "random_state": RANDOM_STATE,
+        "cv_splits": CV_SPLITS,
+        "test_size": TEST_SIZE,
     }
-    (ml_dir / "metrics.json").write_text(
-        json.dumps(metrics_summary, indent=2, default=float)
+
+    stage_labels = (
+        "Load Gold",
+        "Train revenue (HGB)",
+        "Train rating (HGB)",
+        "Save joblib bundles",
+        "Write metrics.json",
+        "Write model_card.md",
     )
+    revenue: ModelBundle | None = None
+    rating: ModelBundle | None = None
+    metrics_summary: dict[str, Any] = {}
+    gold_source = ""
+
+    with logging_redirect_tqdm():
+        with tqdm(
+            total=len(stage_labels),
+            desc="Training",
+            unit="stage",
+        ) as pbar:
+            # --- stage 1: Gold ---
+            if df is None:
+                gold_file = settings.gold_dir / "gold_movies.parquet"
+                if not gold_file.is_file():
+                    raise FileNotFoundError(
+                        f"Gold parquet not found at {gold_file}. "
+                        "Run `uv run python -m src.ingest all` first."
+                    )
+                df_in = pl.read_parquet(gold_file)
+                gold_source = str(gold_file.resolve())
+            else:
+                df_in = df
+                gold_source = "in-memory DataFrame"
+
+            if df_in.height == 0:
+                raise RuntimeError(
+                    "Gold table is empty. Run `uv run python -m src.ingest all` first."
+                )
+            pbar.set_postfix_str("gold ready")
+            pbar.update(1)
+
+            # --- stage 2–3: fit models ---
+            logger.info("training revenue model on %d rows", df_in.height)
+            revenue = _train_single(
+                df_in,
+                target_col="revenue_musd",
+                target_label="Revenue (million USD)",
+                target_transform="log1p",
+            )
+            pbar.set_postfix_str("revenue done")
+            pbar.update(1)
+
+            logger.info("training rating model on %d rows", df_in.height)
+            rating = _train_single(
+                df_in,
+                target_col="vote_average",
+                target_label="User rating (0-10)",
+                target_transform="identity",
+                sample_weight_col="vote_count",
+            )
+            pbar.set_postfix_str("rating done")
+            pbar.update(1)
+
+            assert revenue is not None and rating is not None
+
+            ml_dir = settings.ml_dir
+            ml_dir.mkdir(parents=True, exist_ok=True)
+            _dump_bundle(revenue, ml_dir / "model_revenue.joblib")
+            _dump_bundle(rating, ml_dir / "model_rating.joblib")
+            pbar.set_postfix_str("bundles saved")
+            pbar.update(1)
+
+            metrics_summary = {
+                "revenue": revenue.metadata(),
+                "rating": rating.metadata(),
+            }
+            (ml_dir / "metrics.json").write_text(
+                json.dumps(metrics_summary, indent=2, default=float)
+            )
+            pbar.set_postfix_str("metrics.json")
+            pbar.update(1)
+
+            markdown = render_model_card_markdown(
+                metrics_summary=metrics_summary,
+                system_info=system_info,
+                settings=settings,
+                gold_source=gold_source,
+                run_started_at_utc=run_started_at,
+                reproducibility=reproducibility,
+            )
+            write_model_card(settings.model_card_path, markdown)
+            pbar.set_postfix_str("model_card.md")
+            pbar.update(1)
 
     logger.info(
-        "saved models to %s (revenue holdout R2=%.3f, rating holdout R2=%.3f)",
+        "saved models to %s (revenue holdout R2=%.3f, rating holdout R2=%.3f); "
+        "model card -> %s",
         ml_dir,
         revenue.holdout_metrics.r2,
         rating.holdout_metrics.r2,
+        settings.model_card_path,
     )
     return {"revenue": revenue, "rating": rating}
 

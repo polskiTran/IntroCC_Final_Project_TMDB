@@ -140,6 +140,7 @@ def test_train_and_predict_end_to_end(tmp_path: Path) -> None:
         gold_dir=tmp_path / "gold",
         silver_dir=tmp_path / "silver",
         bronze_dir=tmp_path / "bronze",
+        model_card_path=tmp_path / "model_card.md",
     )
     df = _synth_gold(80)
     bundles = train_mod.train(df=df, settings=settings)
@@ -151,6 +152,12 @@ def test_train_and_predict_end_to_end(tmp_path: Path) -> None:
 
     metrics_file = settings.ml_dir / "metrics.json"
     assert metrics_file.is_file()
+
+    card = settings.model_card_path.read_text(encoding="utf-8")
+    assert settings.model_card_path.is_file()
+    assert "# Model card" in card
+    assert "## Evaluation" in card
+    assert "revenue" in card and "rating" in card
 
     loaded_rev = predict_mod.load_bundle("revenue", settings=settings)
     loaded_rate = predict_mod.load_bundle("rating", settings=settings)
