@@ -1,8 +1,10 @@
 """Bronze layer: fetch raw TMDB JSON and persist it gzipped.
 
-Two phases:
-  1) Discover movie ids matching the scope filter, saving each page.
-  2) Fetch per-movie details+credits, saving one gzipped JSON per movie.
+Streaming pipeline:
+  - Discover pages (page 1 sequential, further pages in bounded concurrent batches).
+  - Each discovered movie id is queued immediately so detail fetches can start
+    while discover continues.
+  - Per-movie files live under id_prefix=NNN/ for S3-friendly prefixes.
 
 Idempotent: existing per-movie files are skipped on re-run.
 """
@@ -10,21 +12,32 @@ Idempotent: existing per-movie files are skipped on re-run.
 from __future__ import annotations
 
 import asyncio
-import gzip
 import json
 import logging
-from datetime import date
+from collections.abc import Iterator
+from contextlib import contextmanager
+from dataclasses import dataclass, field
+from datetime import UTC, date, datetime
 from pathlib import Path
 from typing import Any
 
-from tqdm.asyncio import tqdm
+from tqdm.contrib.logging import tqdm_logging_redirect
+from tqdm.std import tqdm as std_tqdm
 
 from src.config import Settings, get_settings
+from src.ingest.storage import bronze_movie_path, write_json_gz
 from src.ingest.tmdb_client import TMDBClient
 
 logger = logging.getLogger(__name__)
 
 _DISCOVER_MAX_PAGE = 500
+
+
+class _StopSentinel:
+    """Queue marker so workers know discover is finished."""
+
+
+STOP = _StopSentinel()
 
 
 def _discover_filters(settings: Settings) -> dict[str, Any]:
@@ -39,27 +52,103 @@ def _discover_filters(settings: Settings) -> dict[str, Any]:
     }
 
 
-def _write_json_gz(path: Path, payload: dict[str, Any]) -> None:
+def _manifest_path(settings: Settings) -> Path:
+    return (
+        settings.bronze_dir
+        / "manifests"
+        / f"run_date={date.today().isoformat()}"
+        / "run_manifest.json"
+    )
+
+
+def _write_manifest(path: Path, payload: dict[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_suffix(path.suffix + ".tmp")
-    with gzip.open(tmp, "wt", encoding="utf-8") as f:
-        json.dump(payload, f, ensure_ascii=False)
+    tmp = path.with_suffix(".tmp")
+    tmp.write_text(json.dumps(payload, indent=2), encoding="utf-8")
     tmp.replace(path)
 
 
-async def _discover_phase(client: TMDBClient, settings: Settings) -> list[int]:
-    run_dir = settings.discover_dir / date.today().isoformat()
-    filters = _discover_filters(settings)
-    movie_ids: list[int] = []
-    seen: set[int] = set()
+@dataclass
+class _DetailStats:
+    fetched: int = 0
+    skipped: int = 0
+    failed: int = 0
+    errors: list[str] = field(default_factory=list)
 
-    first = await client.discover_movies(page=1, filters=filters)
-    _write_json_gz(run_dir / "page_0001.json.gz", first)
-    for r in first.get("results", []):
-        mid = r.get("id")
-        if isinstance(mid, int) and mid not in seen:
+
+async def _fetch_one(
+    client: TMDBClient,
+    movie_id: int,
+    movies_root: Path,
+    stats: _DetailStats,
+) -> None:
+    out_path = bronze_movie_path(movies_root, movie_id)
+    if out_path.exists():
+        stats.skipped += 1
+        return
+    try:
+        payload = await client.movie_details(movie_id, append="credits")
+        write_json_gz(out_path, payload)
+        stats.fetched += 1
+    except Exception as exc:  # noqa: BLE001 — record and continue
+        stats.failed += 1
+        msg = f"movie_id={movie_id}: {exc}"
+        stats.errors.append(msg)
+        logger.warning("bronze detail fetch failed %s", msg)
+
+
+async def _detail_worker(
+    worker_id: int,
+    client: TMDBClient,
+    queue: asyncio.Queue[int | _StopSentinel],
+    movies_root: Path,
+    stats: _DetailStats,
+    pbar: std_tqdm,
+) -> None:
+    del worker_id  # reserved for debugging
+    while True:
+        item = await queue.get()
+        try:
+            if isinstance(item, _StopSentinel):
+                return
+            assert isinstance(item, int)
+            await _fetch_one(client, item, movies_root, stats)
+            pbar.update(1)
+        finally:
+            queue.task_done()
+
+
+async def _discover_producer(
+    client: TMDBClient,
+    settings: Settings,
+    queue: asyncio.Queue[int | _StopSentinel],
+    discovered_ids: list[int],
+    num_workers: int,
+) -> None:
+    filters = _discover_filters(settings)
+    seen: set[int] = set()
+    run_dir = settings.discover_dir / date.today().isoformat()
+
+    async def fetch_page(page: int) -> dict[str, Any]:
+        return await client.discover_movies(page=page, filters=filters)
+
+    async def ingest_results(payload: dict[str, Any]) -> None:
+        for r in payload.get("results", []):
+            mid = r.get("id")
+            if not isinstance(mid, int) or mid in seen:
+                continue
+            if len(seen) >= settings.sample_counts:
+                break
             seen.add(mid)
-            movie_ids.append(mid)
+            discovered_ids.append(mid)
+            await queue.put(mid)
+
+    first = await fetch_page(1)
+    if settings.save_discover_pages:
+        run_dir.mkdir(parents=True, exist_ok=True)
+        write_json_gz(run_dir / "page_0001.json.gz", first)
+
+    await ingest_results(first)
 
     total_pages = min(int(first.get("total_pages", 1)), _DISCOVER_MAX_PAGE)
     logger.info(
@@ -69,57 +158,132 @@ async def _discover_phase(client: TMDBClient, settings: Settings) -> list[int]:
         settings.sample_counts,
     )
 
+    page_batch = settings.discover_page_concurrency
     page = 2
-    while page <= total_pages and len(movie_ids) < settings.sample_counts:
-        payload = await client.discover_movies(page=page, filters=filters)
-        _write_json_gz(run_dir / f"page_{page:04d}.json.gz", payload)
-        for r in payload.get("results", []):
-            mid = r.get("id")
-            if isinstance(mid, int) and mid not in seen:
-                seen.add(mid)
-                movie_ids.append(mid)
-                if len(movie_ids) >= settings.sample_counts:
-                    break
-        page += 1
+    while page <= total_pages and len(seen) < settings.sample_counts:
+        batch_end = min(page + page_batch - 1, total_pages)
+        pages = list(range(page, batch_end + 1))
+        results = await asyncio.gather(*[fetch_page(p) for p in pages])
 
-    return movie_ids[: settings.sample_counts]
+        for p, payload in zip(pages, results, strict=True):
+            if len(seen) >= settings.sample_counts:
+                break
+            if settings.save_discover_pages:
+                run_dir.mkdir(parents=True, exist_ok=True)
+                write_json_gz(run_dir / f"page_{p:04d}.json.gz", payload)
+            await ingest_results(payload)
 
+        page = batch_end + 1
 
-async def _fetch_one(
-    client: TMDBClient, movie_id: int, out_dir: Path
-) -> tuple[int, bool]:
-    out_path = out_dir / f"{movie_id}.json.gz"
-    if out_path.exists():
-        return movie_id, False
-    payload = await client.movie_details(movie_id, append="credits")
-    _write_json_gz(out_path, payload)
-    return movie_id, True
+    for _ in range(num_workers):
+        await queue.put(STOP)
 
 
-async def _details_phase(
-    client: TMDBClient, settings: Settings, movie_ids: list[int]
-) -> None:
-    out_dir = settings.movies_bronze_dir
-    out_dir.mkdir(parents=True, exist_ok=True)
+@contextmanager
+def _suppress_http_library_info_logging() -> Iterator[None]:
+    """Avoid httpx/httpcore per-request INFO lines (e.g. ``... 200 OK``) during tqdm."""
+    names = (
+        "httpx",
+        "httpcore",
+        "httpcore.http11",
+        "httpcore.connection",
+    )
+    saved: list[tuple[logging.Logger, int]] = []
+    for name in names:
+        log = logging.getLogger(name)
+        saved.append((log, log.level))
+        if log.level <= logging.INFO:
+            log.setLevel(logging.WARNING)
+    try:
+        yield
+    finally:
+        for log, prev in saved:
+            log.setLevel(prev)
 
-    tasks = [_fetch_one(client, mid, out_dir) for mid in movie_ids]
-    fetched = 0
-    skipped = 0
-    for coro in tqdm.as_completed(tasks, total=len(tasks), desc="movies"):
-        _, did_fetch = await coro
-        if did_fetch:
-            fetched += 1
-        else:
-            skipped += 1
-    logger.info("details: fetched=%d skipped=%d", fetched, skipped)
 
-
-async def run_bronze(settings: Settings | None = None) -> None:
+async def run_bronze(
+    settings: Settings | None = None,
+    *,
+    client: Any = None,
+) -> dict[str, Any]:
+    """Run Bronze ingestion. Optional injected ``client`` is for tests."""
     settings = settings or get_settings()
-    async with TMDBClient(settings) as client:
-        movie_ids = await _discover_phase(client, settings)
-        logger.info("collected %d movie ids", len(movie_ids))
-        await _details_phase(client, settings, movie_ids)
+    if client is not None:
+        return await _run_bronze_with_client(settings, client)
+
+    async with TMDBClient(settings) as tmcd:
+        return await _run_bronze_with_client(settings, tmcd)
+
+
+async def _run_bronze_with_client(
+    settings: Settings,
+    client: Any,
+) -> dict[str, Any]:
+    movies_root = settings.movies_bronze_dir
+    movies_root.mkdir(parents=True, exist_ok=True)
+
+    discovered_ids: list[int] = []
+    stats = _DetailStats()
+
+    queue_max = max(200, settings.sample_counts + settings.concurrency * 4)
+    queue: asyncio.Queue[int | _StopSentinel] = asyncio.Queue(maxsize=queue_max)
+
+    num_workers = max(1, settings.concurrency)
+
+    # tqdm_logging_redirect: route console logging through tqdm.write so lines
+    # don't clobber the bar; httpx INFO request logs are muted for the same reason.
+    with _suppress_http_library_info_logging():
+        with tqdm_logging_redirect(
+            total=settings.sample_counts,
+            desc="movie details",
+            unit="movie",
+            dynamic_ncols=True,
+            mininterval=0.25,
+        ) as pbar:
+            producer_task = asyncio.create_task(
+                _discover_producer(
+                    client, settings, queue, discovered_ids, num_workers
+                )
+            )
+
+            workers = [
+                asyncio.create_task(
+                    _detail_worker(
+                        i,
+                        client,
+                        queue,
+                        movies_root,
+                        stats,
+                        pbar,
+                    )
+                )
+                for i in range(num_workers)
+            ]
+
+            await asyncio.gather(producer_task, *workers)
+
+    manifest: dict[str, Any] = {
+        "run_timestamp_utc": datetime.now(UTC).isoformat(),
+        "filters": _discover_filters(settings),
+        "sample_counts_target": settings.sample_counts,
+        "discovered_movie_ids": discovered_ids,
+        "details": {
+            "fetched": stats.fetched,
+            "skipped": stats.skipped,
+            "failed": stats.failed,
+            "errors": stats.errors[:50],
+        },
+        "save_discover_pages": settings.save_discover_pages,
+    }
+    _write_manifest(_manifest_path(settings), manifest)
+    logger.info(
+        "bronze complete: discovered=%d fetched=%d skipped=%d failed=%d",
+        len(discovered_ids),
+        stats.fetched,
+        stats.skipped,
+        stats.failed,
+    )
+    return manifest
 
 
 def main() -> None:

@@ -1,5 +1,8 @@
 """Silver layer: parse Bronze movie JSON into typed Parquet tables.
 
+Reads all `*.json.gz` documents under ``settings.movies_bronze_dir``
+(recursively), including hive-style ``id_prefix=NNN/<id>.json.gz`` paths.
+
 Produces three files under `settings.silver_dir`:
   - movies.parquet  (one row per movie)
   - cast.parquet    (long, top-N cast per movie)
@@ -31,7 +34,7 @@ CREW_JOBS = frozenset({"Director", "Producer"})
 def _iter_bronze_movies(bronze_dir: Path) -> Iterator[dict[str, Any]]:
     if not bronze_dir.exists():
         return
-    for p in sorted(bronze_dir.glob("*.json.gz")):
+    for p in sorted(bronze_dir.rglob("*.json.gz")):
         try:
             with gzip.open(p, "rt", encoding="utf-8") as f:
                 yield json.load(f)

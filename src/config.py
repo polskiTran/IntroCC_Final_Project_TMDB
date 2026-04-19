@@ -30,6 +30,8 @@ class Settings(BaseSettings):
 
     requests_per_second: int = 40
     concurrency: int = 20
+    discover_page_concurrency: int = 15
+    save_discover_pages: bool = False
 
     sample_counts: int = 10000
     min_vote_count: int = 10

@@ -40,6 +40,8 @@ Tunables are centralized in [src/config.py](src/config.py) and overridable via `
 - `START_YEAR` (default `1980`).
 - `MIN_BUDGET_USD` (default `100000`) — Gold-only filter.
 - `REQUESTS_PER_SECOND` (default `40`), `CONCURRENCY` (default `20`).
+- `DISCOVER_PAGE_CONCURRENCY` (default `15`) — concurrent `/discover/movie` pages (bounded).
+- `SAVE_DISCOVER_PAGES` (default `false`) — persist raw discover JSON pages under `bronze/discover/` (off by default).
 
 Quick end-to-end smoke run:
 
@@ -52,8 +54,9 @@ SAMPLE_COUNTS=50 uv run python -m src.ingest all
 ```
 data/
   bronze/
-    discover/<run-date>/page_NNNN.json.gz   # raw discover pages
-    movies/<movie_id>.json.gz               # per-movie details + credits
+    manifests/run_date=YYYY-MM-DD/run_manifest.json   # sampled ids + fetch stats
+    discover/<run-date>/page_NNNN.json.gz   # optional raw discover pages (SAVE_DISCOVER_PAGES=true)
+    movies/id_prefix=NNN/<movie_id>.json.gz           # per-movie details + credits (hive-style prefixes)
   silver/
     movies.parquet                          # one row per movie (en, non-adult, 1980+)
     cast.parquet                            # long, top-N lead cast

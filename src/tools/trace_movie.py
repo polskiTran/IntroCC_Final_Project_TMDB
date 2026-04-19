@@ -23,6 +23,7 @@ import polars as pl
 
 from src.config import Settings, get_settings
 from src.ingest.silver import _movie_row
+from src.ingest.storage import bronze_movie_path
 
 
 def _load_bronze_doc(path: Path) -> dict[str, Any]:
@@ -35,7 +36,7 @@ def _find_bronze_by_title(bronze_dir: Path, needle: str) -> list[tuple[int, Path
     matches: list[tuple[int, Path]] = []
     if not bronze_dir.is_dir():
         return matches
-    for path in sorted(bronze_dir.glob("*.json.gz")):
+    for path in sorted(bronze_dir.rglob("*.json.gz")):
         try:
             doc = _load_bronze_doc(path)
         except (OSError, json.JSONDecodeError):
@@ -120,7 +121,7 @@ def trace_movie(
     )
 
     # --- Bronze ---
-    expected = paths.bronze_movie / f"{movie_id}.json.gz"
+    expected = bronze_movie_path(paths.bronze_movie, movie_id)
     doc = bronze_doc
     path_used = bronze_path or expected
     bronze_read_error: str | None = None

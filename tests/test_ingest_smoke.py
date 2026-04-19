@@ -17,12 +17,13 @@ import pytest
 
 from src.config import Settings
 from src.ingest import gold, silver
+from src.ingest.storage import bronze_movie_path
 from src.ingest.tmdb_client import TMDBClient, TMDBError
 
 
 def _write_bronze_movie(dir_path: Path, doc: dict[str, Any]) -> None:
-    dir_path.mkdir(parents=True, exist_ok=True)
-    path = dir_path / f"{doc['id']}.json.gz"
+    path = bronze_movie_path(dir_path, doc["id"])
+    path.parent.mkdir(parents=True, exist_ok=True)
     with gzip.open(path, "wt", encoding="utf-8") as f:
         json.dump(doc, f)
 

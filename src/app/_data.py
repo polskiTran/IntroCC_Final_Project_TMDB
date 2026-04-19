@@ -111,7 +111,7 @@ def layer_metadata(settings: Settings | None = None) -> list[LayerInfo]:
 
     movies_bronze = settings.movies_bronze_dir
     movie_files = (
-        list(movies_bronze.glob("*.json.gz")) if movies_bronze.is_dir() else []
+        list(movies_bronze.rglob("*.json.gz")) if movies_bronze.is_dir() else []
     )
     files, size, last = _dir_stats(movie_files)
     out.append(

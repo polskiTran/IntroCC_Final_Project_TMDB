@@ -53,7 +53,7 @@ st.graphviz_chart(
         rankdir=LR;
         node [shape=box, style=rounded];
         TMDB [label="TMDB API"];
-        Bronze [label="Bronze\\n(raw JSON.gz)\\ndiscover/ + movies/"];
+        Bronze [label="Bronze\\n(raw JSON.gz)\\nmovies/id_prefix=*/ + manifests/"];
         Silver [label="Silver\\n(typed Parquet)\\nmovies, cast, crew"];
         Gold [label="Gold\\n(modeling-ready)\\ngold_movies.parquet"];
         TMDB -> Bronze -> Silver -> Gold;
