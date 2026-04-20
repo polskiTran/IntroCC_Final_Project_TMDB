@@ -57,11 +57,29 @@ _RELEASE_MONTH_LOOKUP = pl.DataFrame(
     schema={"release_month": pl.Int32, "month_label": pl.String},
 )
 
+# One chart per full rerun keeps the page responsive; sidebar changes still rerun
+# the script, but Polars + Altair only run for the visible chart unless "All" is on.
+_VIEW_GENRE = "1 · ROI by genre"
+_VIEW_DIRECTORS = "2 · Top directors"
+_VIEW_HIT_FLOP = "3 · Hit / flop"
+_VIEW_SEASON = "4 · Seasonality"
+_VIEW_STUDIOS = "5 · Top studios"
+_VIEW_ALL = "All charts (slower)"
+_CHART_VIEWS: tuple[str, ...] = (
+    _VIEW_GENRE,
+    _VIEW_DIRECTORS,
+    _VIEW_HIT_FLOP,
+    _VIEW_SEASON,
+    _VIEW_STUDIOS,
+    _VIEW_ALL,
+)
+
 st.set_page_config(page_title="Analytics", layout="wide")
 st.title("Data analytics")
 st.caption(
     f"Charts over the Gold modeling table (`{GOLD_FILENAME}`). Sidebar filters "
-    "apply to every chart below."
+    "apply to the chart you select below. Pick one chart at a time for best "
+    "responsiveness, or open “All charts” to render everything at once."
 )
 
 settings = get_settings()
@@ -128,12 +146,29 @@ if filtered.height == 0:
     st.info("No rows match the current filters.")
     st.stop()
 
+chart_focus = st.segmented_control(
+    "Show chart",
+    options=list(_CHART_VIEWS),
+    default=_VIEW_GENRE,
+    key="analytics_chart_focus",
+    help=(
+        "Streamlit reruns the whole script when sidebar filters change. Showing "
+        "one chart avoids recomputing every figure on each change."
+    ),
+    label_visibility="visible",
+)
 
-st.header("1. Average ROI by genre")
-genre_roi = roi_by_genre(filtered)
-if genre_roi.height == 0:
-    st.info("No genre data available.")
-else:
+
+def _show_chart(which: str) -> bool:
+    return chart_focus == _VIEW_ALL or chart_focus == which
+
+
+def _section_genre_roi(data: pl.DataFrame) -> None:
+    st.header("1. Average ROI by genre")
+    genre_roi = roi_by_genre(data)
+    if genre_roi.height == 0:
+        st.info("No genre data available.")
+        return
     chart = (
         alt.Chart(genre_roi.to_pandas())
         .mark_bar()
@@ -152,6 +187,10 @@ else:
         .properties(height=28 * max(genre_roi.height, 1) + 40)
     )
     st.altair_chart(chart, width="stretch")
+
+
+if _show_chart(_VIEW_GENRE):
+    _section_genre_roi(filtered)
 
 
 @st.fragment
@@ -196,7 +235,8 @@ def _section_top_directors(data: pl.DataFrame) -> None:
     st.altair_chart(chart, width="stretch")
 
 
-_section_top_directors(filtered)
+if _show_chart(_VIEW_DIRECTORS):
+    _section_top_directors(filtered)
 
 
 @st.fragment
@@ -317,7 +357,8 @@ def _section_hit_flop_scatter(data: pl.DataFrame) -> None:
     st.dataframe(counts, width="stretch", hide_index=True)
 
 
-_section_hit_flop_scatter(filtered)
+if _show_chart(_VIEW_HIT_FLOP):
+    _section_hit_flop_scatter(filtered)
 
 
 @st.fragment
@@ -376,7 +417,8 @@ def _section_month_genre_heatmap(data: pl.DataFrame) -> None:
     st.altair_chart(heatmap, width="stretch")
 
 
-_section_month_genre_heatmap(filtered)
+if _show_chart(_VIEW_SEASON):
+    _section_month_genre_heatmap(filtered)
 
 
 @st.fragment
@@ -428,4 +470,5 @@ def _section_top_studios(data: pl.DataFrame) -> None:
     st.dataframe(studios, width="stretch", hide_index=True)
 
 
-_section_top_studios(filtered)
+if _show_chart(_VIEW_STUDIOS):
+    _section_top_studios(filtered)
