@@ -11,6 +11,7 @@ import polars as pl
 import pytest
 
 from src.app._data import (
+    GOLD_ANALYTICS_COLUMNS,
     classify_roi,
     gold_parquet_row_count,
     gold_parquet_stamp,
@@ -104,6 +105,23 @@ def test_load_gold_returns_rows_after_build(tmp_settings: Settings) -> None:
     df = load_gold(gp, stamp)
     assert df.height == 2
     assert {"title", "budget_musd", "revenue_musd", "roi"}.issubset(df.columns)
+
+
+def test_load_gold_analytics_columns_subset_matches_full_row_count(
+    tmp_settings: Settings,
+) -> None:
+    _write_bronze_movie(tmp_settings.movies_bronze_dir, _movie_fixture(1))
+    _write_bronze_movie(tmp_settings.movies_bronze_dir, _movie_fixture(2))
+    silver.build(tmp_settings)
+    gold.build(tmp_settings)
+
+    gp = str(gold_path(tmp_settings))
+    stamp = gold_parquet_stamp(tmp_settings)
+    full = load_gold(gp, stamp)
+    narrow = load_gold(gp, stamp, columns=GOLD_ANALYTICS_COLUMNS)
+    assert full.height == narrow.height == 2
+    assert set(narrow.columns) == set(GOLD_ANALYTICS_COLUMNS)
+    assert {"movie_id", "original_title"}.isdisjoint(narrow.columns)
 
 
 def test_load_gold_empty_when_missing(tmp_settings: Settings) -> None:

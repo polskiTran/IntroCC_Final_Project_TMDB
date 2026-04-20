@@ -29,6 +29,21 @@ from src.io.store import (
 
 SILVER_FILES = SILVER_PARQUET_NAMES
 
+# Subset of Gold columns used by the Streamlit Analytics page (smaller IO / memory).
+GOLD_ANALYTICS_COLUMNS: tuple[str, ...] = (
+    "release_year",
+    "vote_count",
+    "genres",
+    "roi",
+    "director_name",
+    "budget_musd",
+    "revenue_musd",
+    "vote_average",
+    "title",
+    "release_month",
+    "lead_production_company",
+)
+
 
 @dataclass(frozen=True)
 class LayerInfo:
@@ -75,25 +90,33 @@ def gold_parquet_stamp(settings: Settings | None = None) -> str:
 
 
 @st.cache_data(show_spinner=False)
-def load_gold(path_str: str, parquet_stamp: str) -> pl.DataFrame:
+def load_gold(
+    path_str: str,
+    parquet_stamp: str,
+    columns: tuple[str, ...] | None = None,
+) -> pl.DataFrame:
     """Load the Gold parquet. Empty frame if missing.
 
     Pass ``parquet_stamp=gold_parquet_stamp(settings)`` so the cache invalidates
     when the file is replaced in place (same path, new bytes).
+
+    Pass ``columns=GOLD_ANALYTICS_COLUMNS`` (or another tuple of names) to read
+    only those columns from Parquet.
     """
     _ = parquet_stamp
+    cols: list[str] | None = list(columns) if columns is not None else None
     if not path_str.startswith("s3://"):
         p = Path(path_str)
         if not p.is_file():
             return pl.DataFrame()
-        return pl.read_parquet(p)
+        return pl.read_parquet(p, columns=cols)
 
     settings = get_settings()
     if not s3_object_exists(settings, "gold", GOLD_FILENAME):
         return pl.DataFrame()
     so = polars_storage_options(settings) or {}
     try:
-        return pl.read_parquet(path_str, storage_options=so)
+        return pl.read_parquet(path_str, storage_options=so, columns=cols)
     except Exception:
         return pl.DataFrame()
 
