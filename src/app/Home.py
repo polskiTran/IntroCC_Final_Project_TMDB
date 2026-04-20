@@ -14,18 +14,22 @@ import polars as pl  # noqa: E402
 import streamlit as st  # noqa: E402
 
 from src.app._data import (  # noqa: E402
+    gold_parquet_stamp,
     gold_path,
     gold_path_exists,
     layer_metadata,
     load_gold,
     scope_constraints,
 )
+from src.app._gold_refresh import render_gold_refresh_sidebar  # noqa: E402
 from src.config import get_settings  # noqa: E402
 
 
 st.set_page_config(page_title="TMDB Analysis", layout="wide")
 
 settings = get_settings()
+
+render_gold_refresh_sidebar(settings)
 
 st.title("TMDB Analysis")
 st.caption("Intro Cloud Computing Final Project")
@@ -98,7 +102,8 @@ if not gold_path_exists(settings):
     )
 else:
     st.header("Gold at a glance")
-    gold = load_gold(str(gold_path(settings)))
+    _stamp = gold_parquet_stamp(settings)
+    gold = load_gold(str(gold_path(settings)), _stamp)
     if gold.height == 0:
         st.info("Gold parquet exists but is empty.")
     else:

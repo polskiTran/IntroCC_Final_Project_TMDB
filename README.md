@@ -107,7 +107,7 @@ uv run streamlit run src/app/Home.py
 ```
 
 ### Pages
-1. [x] **Overview** (`src/app/Home.py`) — abstract, pipeline diagram, scope constraints, and per-layer data metadata (file count, size, row count, last updated) plus headline Gold stats.
+1. [x] **Overview** (`src/app/Home.py`) — abstract, pipeline diagram, scope constraints, and per-layer data metadata (file count, size, row count, last updated) plus headline Gold stats. Every Gold-backed page has a sidebar **Refresh from Gold** control to reload `gold_movies.parquet` from local `data/gold` or from S3 when `DATA_BACKEND=s3`, with a short message if the file or row counts changed.
 2. [x] **Sample data pull / inspect** (`src/app/pages/1_Sample_Data.py`) — filter the Gold table by year, genres, director, and budget; preview rows with selectable columns, summary statistics, and CSV download.
 3. [x] **Data analytics** (`src/app/pages/2_Analytics.py`) — genre ROI, director leaderboard, hit/flop scatter, plus a release-month × genre seasonality heatmap and a top-production-companies leaderboard. All charts share sidebar filters (year range, minimum `vote_count`, genres).
 4. [x] **ML prediction** (`src/app/pages/3_ML_Prediction.py`) — two `HistGradientBoostingRegressor` models (revenue & rating) with leakage-safe target encoding. Findings tab shows hold-out / 5-fold CV metrics vs a Ridge baseline, permutation importances, and predicted-vs-actual scatter. Predict tab runs single-row inference from user inputs.

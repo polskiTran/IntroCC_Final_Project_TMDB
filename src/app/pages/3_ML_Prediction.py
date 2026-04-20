@@ -19,7 +19,13 @@ import pandas as pd  # noqa: E402
 import polars as pl  # noqa: E402
 import streamlit as st  # noqa: E402
 
-from src.app._data import gold_path, gold_path_exists, load_gold  # noqa: E402
+from src.app._data import (  # noqa: E402
+    gold_parquet_stamp,
+    gold_path,
+    gold_path_exists,
+    load_gold,
+)
+from src.app._gold_refresh import render_gold_refresh_sidebar  # noqa: E402
 from src.config import get_settings  # noqa: E402
 from src.ml.predict import (  # noqa: E402
     LoadedBundle,
@@ -47,6 +53,8 @@ if not gold_path_exists(settings):
     )
     st.stop()
 
+render_gold_refresh_sidebar(settings)
+
 if not (bundle_exists("revenue", settings) and bundle_exists("rating", settings)):
     st.error(
         "Model bundles not found under `models/`. Train them with "
@@ -68,7 +76,8 @@ def _cache_key(target: str) -> str:
 revenue = _load("revenue", _cache_key("revenue"))
 rating = _load("rating", _cache_key("rating"))
 
-gold = load_gold(str(gold_path(settings)))
+_gold_stamp = gold_parquet_stamp(settings)
+gold = load_gold(str(gold_path(settings)), _gold_stamp)
 
 
 MONTH_LABELS = [
@@ -235,7 +244,7 @@ def _top_values(col: str, _cache_key: str, limit: int = 400) -> list[str]:
     return [str(v) for v in values if v]
 
 
-_GOLD_CACHE_KEY = str(gold_path(settings))
+_GOLD_CACHE_KEY = f"{gold_path(settings)}:{_gold_stamp}"
 
 
 tab_findings, tab_predict = st.tabs(["Findings", "Predict"])

@@ -12,6 +12,8 @@ import pytest
 
 from src.app._data import (
     classify_roi,
+    gold_parquet_row_count,
+    gold_parquet_stamp,
     gold_path,
     gold_path_exists,
     layer_metadata,
@@ -97,14 +99,62 @@ def test_load_gold_returns_rows_after_build(tmp_settings: Settings) -> None:
     silver.build(tmp_settings)
     gold.build(tmp_settings)
 
-    df = load_gold(str(gold_path(tmp_settings)))
+    gp = str(gold_path(tmp_settings))
+    stamp = gold_parquet_stamp(tmp_settings)
+    df = load_gold(gp, stamp)
     assert df.height == 2
     assert {"title", "budget_musd", "revenue_musd", "roi"}.issubset(df.columns)
 
 
 def test_load_gold_empty_when_missing(tmp_settings: Settings) -> None:
-    df = load_gold(str(gold_path(tmp_settings)))
+    gp = str(gold_path(tmp_settings))
+    stamp = gold_parquet_stamp(tmp_settings)
+    assert stamp == "missing"
+    df = load_gold(gp, stamp)
     assert df.height == 0
+
+
+def test_gold_parquet_stamp_and_row_count_after_build(tmp_settings: Settings) -> None:
+    assert gold_parquet_stamp(tmp_settings) == "missing"
+    assert gold_parquet_row_count(tmp_settings) is None
+
+    _write_bronze_movie(tmp_settings.movies_bronze_dir, _movie_fixture(1))
+    silver.build(tmp_settings)
+    gold.build(tmp_settings)
+
+    stamp = gold_parquet_stamp(tmp_settings)
+    assert stamp != "missing"
+    assert gold_parquet_row_count(tmp_settings) == 1
+
+
+def test_gold_parquet_stamp_changes_after_rebuild(tmp_settings: Settings) -> None:
+    _write_bronze_movie(tmp_settings.movies_bronze_dir, _movie_fixture(1))
+    silver.build(tmp_settings)
+    gold.build(tmp_settings)
+    stamp_one = gold_parquet_stamp(tmp_settings)
+
+    _write_bronze_movie(tmp_settings.movies_bronze_dir, _movie_fixture(2))
+    silver.build(tmp_settings)
+    gold.build(tmp_settings)
+    stamp_two = gold_parquet_stamp(tmp_settings)
+
+    assert stamp_one != stamp_two
+
+
+def test_load_gold_second_stamp_sees_new_rows(tmp_settings: Settings) -> None:
+    _write_bronze_movie(tmp_settings.movies_bronze_dir, _movie_fixture(1))
+    silver.build(tmp_settings)
+    gold.build(tmp_settings)
+    gp = str(gold_path(tmp_settings))
+    s1 = gold_parquet_stamp(tmp_settings)
+    assert load_gold(gp, s1).height == 1
+
+    _write_bronze_movie(tmp_settings.movies_bronze_dir, _movie_fixture(2))
+    silver.build(tmp_settings)
+    gold.build(tmp_settings)
+    s2 = gold_parquet_stamp(tmp_settings)
+    assert s2 != s1
+    assert load_gold(gp, s2).height == 2
 
 
 def test_layer_metadata_lists_all_expected_layers(tmp_settings: Settings) -> None:

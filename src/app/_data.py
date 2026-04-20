@@ -1,7 +1,7 @@
 """Shared data helpers for the Streamlit pages.
 
 Kept free of Streamlit UI code so the helpers are easy to unit test. The
-only Streamlit dependency is `st.cache_data` on `load_gold`, which is safe
+only Streamlit dependency is ``st.cache_data`` on ``load_gold``, which is safe
 to import without a running Streamlit server.
 """
 
@@ -18,9 +18,11 @@ from src.config import Settings, get_settings
 from src.io.store import (
     GOLD_FILENAME,
     SILVER_PARQUET_NAMES,
+    get_s3_client,
     gold_parquet_ref,
     polars_storage_options,
     s3_object_exists,
+    s3_object_key,
     s3_prefix_metrics,
     s3_uri,
 )
@@ -53,32 +55,45 @@ def gold_path_exists(settings: Settings | None = None) -> bool:
     return s3_object_exists(settings, "gold", GOLD_FILENAME)
 
 
+def gold_parquet_stamp(settings: Settings | None = None) -> str:
+    """Cheap fingerprint of the Gold parquet on disk or in S3 (mtime+size or ETag+size)."""
+    settings = settings or get_settings()
+    if settings.data_backend != "s3":
+        p = settings.gold_dir / GOLD_FILENAME
+        if not p.is_file():
+            return "missing"
+        st_ = p.stat()
+        return f"{st_.st_mtime_ns}:{st_.st_size}"
+    if not s3_object_exists(settings, "gold", GOLD_FILENAME):
+        return "missing"
+    client = get_s3_client(settings)
+    key = s3_object_key(settings, "gold", GOLD_FILENAME)
+    head = client.head_object(Bucket=settings.s3_bucket, Key=key)
+    etag = str(head.get("ETag") or "").strip('"')
+    cl = int(head.get("ContentLength") or 0)
+    return f"{etag}:{cl}"
+
+
 @st.cache_data(show_spinner=False)
-def load_gold(path_str: str | None = None) -> pl.DataFrame:
+def load_gold(path_str: str, parquet_stamp: str) -> pl.DataFrame:
     """Load the Gold parquet. Empty frame if missing.
 
-    `path_str` is the cache key; pass `str(gold_path())` from the caller so
-    the cache invalidates when the file is replaced.
+    Pass ``parquet_stamp=gold_parquet_stamp(settings)`` so the cache invalidates
+    when the file is replaced in place (same path, new bytes).
     """
-    if path_str is not None and not path_str.startswith("s3://"):
+    _ = parquet_stamp
+    if not path_str.startswith("s3://"):
         p = Path(path_str)
         if not p.is_file():
             return pl.DataFrame()
         return pl.read_parquet(p)
 
     settings = get_settings()
-    ref, opts = gold_parquet_ref(settings)
-    key = path_str if path_str is not None else str(ref)
-    if opts is None:
-        p = Path(key)
-        if not p.is_file():
-            return pl.DataFrame()
-        return pl.read_parquet(p)
     if not s3_object_exists(settings, "gold", GOLD_FILENAME):
         return pl.DataFrame()
     so = polars_storage_options(settings) or {}
     try:
-        return pl.read_parquet(key, storage_options=so)
+        return pl.read_parquet(path_str, storage_options=so)
     except Exception:
         return pl.DataFrame()
 
@@ -130,6 +145,14 @@ def _parquet_rows_s3(settings: Settings, *uri_parts: str) -> int | None:
         return None
     except Exception:
         return None
+
+
+def gold_parquet_row_count(settings: Settings | None = None) -> int | None:
+    """Row count for Gold parquet via scan (no full table load)."""
+    settings = settings or get_settings()
+    if settings.data_backend != "s3":
+        return _parquet_rows(settings.gold_dir / GOLD_FILENAME)
+    return _parquet_rows_s3(settings, "gold", GOLD_FILENAME)
 
 
 def _layer_metadata_s3(settings: Settings) -> list[LayerInfo]:

@@ -15,10 +15,12 @@ import streamlit as st  # noqa: E402
 
 from src.app._data import (  # noqa: E402
     GOLD_FILENAME,
+    gold_parquet_stamp,
     gold_path,
     gold_path_exists,
     load_gold,
 )
+from src.app._gold_refresh import render_gold_refresh_sidebar  # noqa: E402
 from src.config import get_settings  # noqa: E402
 
 DEFAULT_COLUMNS = [
@@ -52,7 +54,9 @@ if not gold_path_exists(settings):
     )
     st.stop()
 
-df = load_gold(str(gold_path(settings)))
+render_gold_refresh_sidebar(settings)
+_gold_stamp = gold_parquet_stamp(settings)
+df = load_gold(str(gold_path(settings)), _gold_stamp)
 if df.height == 0:
     st.warning("Gold parquet is empty — the pipeline produced no rows.")
     st.stop()
