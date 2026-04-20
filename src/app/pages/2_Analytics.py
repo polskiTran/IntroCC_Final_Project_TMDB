@@ -16,8 +16,10 @@ import polars as pl  # noqa: E402
 import streamlit as st  # noqa: E402
 
 from src.app._data import (  # noqa: E402
+    DEFAULT_ANALYTICS_GENRES,
     GOLD_ANALYTICS_COLUMNS,
     GOLD_FILENAME,
+    TMDB_CHART_GENRE_OPTIONS,
     classify_roi,
     gold_parquet_stamp,
     gold_path,
@@ -100,15 +102,14 @@ min_votes = st.sidebar.slider(
     help="Suppress noisy ROI outliers from obscure titles.",
 )
 
-all_genres = (
-    df.select(pl.col("genres").explode())
-    .drop_nulls()
-    .unique()
-    .sort("genres")["genres"]
-    .to_list()
-)
 selected_genres = st.sidebar.multiselect(
-    "Genres (any match; empty = all)", options=all_genres
+    "Genres (any match; clear = all)",
+    options=list(TMDB_CHART_GENRE_OPTIONS),
+    default=list(DEFAULT_ANALYTICS_GENRES),
+    help=(
+        "Official TMDB genre names. Defaults to Drama for a smaller first load; "
+        "clear the selection to include every genre."
+    ),
 )
 
 filtered = df.filter(

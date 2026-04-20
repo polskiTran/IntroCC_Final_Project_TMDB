@@ -11,7 +11,9 @@ import polars as pl
 import pytest
 
 from src.app._data import (
+    DEFAULT_ANALYTICS_GENRES,
     GOLD_ANALYTICS_COLUMNS,
+    TMDB_CHART_GENRE_OPTIONS,
     classify_roi,
     gold_parquet_row_count,
     gold_parquet_stamp,
@@ -201,6 +203,15 @@ def test_layer_metadata_lists_all_expected_layers(tmp_settings: Settings) -> Non
     assert by_label["Gold / gold_movies"].rows == 2
     assert by_label["Gold / gold_movies"].files == 1
     assert by_label["Gold / gold_movies"].size_mb > 0
+
+
+def test_tmdb_chart_genre_options_sorted_unique_covers_fixture() -> None:
+    assert TMDB_CHART_GENRE_OPTIONS == tuple(sorted(TMDB_CHART_GENRE_OPTIONS))
+    assert len(TMDB_CHART_GENRE_OPTIONS) == len(set(TMDB_CHART_GENRE_OPTIONS))
+    assert "Drama" in TMDB_CHART_GENRE_OPTIONS
+    assert "Action" in TMDB_CHART_GENRE_OPTIONS
+    assert DEFAULT_ANALYTICS_GENRES == ("Drama",)
+    assert set(DEFAULT_ANALYTICS_GENRES).issubset(TMDB_CHART_GENRE_OPTIONS)
 
 
 def test_scope_constraints_reflects_settings(tmp_settings: Settings) -> None:

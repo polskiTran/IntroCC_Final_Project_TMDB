@@ -44,6 +44,33 @@ GOLD_ANALYTICS_COLUMNS: tuple[str, ...] = (
     "lead_production_company",
 )
 
+# TMDB movie genre `name` strings (same as Silver `genres` from the API). Used for
+# Analytics sidebar options so we never scan the full Gold table to build the list.
+TMDB_CHART_GENRE_OPTIONS: tuple[str, ...] = (
+    "Action",
+    "Adventure",
+    "Animation",
+    "Comedy",
+    "Crime",
+    "Documentary",
+    "Drama",
+    "Family",
+    "Fantasy",
+    "History",
+    "Horror",
+    "Music",
+    "Mystery",
+    "Romance",
+    "Science Fiction",
+    "TV Movie",
+    "Thriller",
+    "War",
+    "Western",
+)
+
+# Default genre filter on the Analytics page (smaller working set on first load).
+DEFAULT_ANALYTICS_GENRES: tuple[str, ...] = ("Drama",)
+
 
 @dataclass(frozen=True)
 class LayerInfo:
