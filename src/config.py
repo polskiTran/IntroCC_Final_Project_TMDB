@@ -53,7 +53,7 @@ class Settings(BaseSettings):
             "use `python -m src.ingest upload-s3` to sync those folders to the bucket."
         ),
     )
-    aws_region: str = "us-east-1"
+    aws_region: str = "us-east-2"
     s3_bucket: str = Field(
         default="",
         description="S3 bucket for reading (when data_backend=s3) and for upload-s3.",
